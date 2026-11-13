@@ -99,7 +99,7 @@ tbody tr.click{cursor:pointer}
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:10;overflow:auto}
 .ov.show{display:flex}
-.modal{width:min(1000px,100%);background:#fff;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal{width:min(1200px,100%);background:#fff;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
 .mh{display:flex;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--line2)}
 .mh h2{margin:0;font-size:20px}
 .mh p{margin:4px 0 0;color:var(--muted)}
@@ -217,7 +217,7 @@ td.short{color:var(--red);font-weight:700}
         <label for="status">Bin quantity</label>
         <select id="status">
           <option value="all">All bin records</option>
-          <option value="instock">On hand &gt; 0</option>
+          <option value="instock">On hand, PO or SO &gt; 0</option>
           <option value="zero">Zero on hand</option>
           <option value="committed">Has committed qty</option>
           <option value="short">Available &lt; 0</option>
@@ -292,7 +292,6 @@ td.short{color:var(--red);font-weight:700}
       <div class="tablist">
         <button class="tab on" data-tab="part">By part</button>
         <button class="tab" data-tab="wh">Warehouses</button>
-        <button class="tab" data-tab="nobin">No bin location <span class="badge" id="nobin-n"></span></button>
         <button class="tab" data-tab="kit">Kit check</button>
       </div>
       <div class="tools">
@@ -360,6 +359,21 @@ const END_USER_BIN = "0-00-0-0"; // bin used in Sage for parts already received 
 const NO_BIN = new Set(["", END_USER_BIN]); // anything that is not a real warehouse bin
 
 let ROWS = [], WH = new Map(), BY_ITEM = new Map(), ITEM_KEY = new Map(), META = {};
+// Item warehouse detail (Sage vItemWarehouseDetail): item -> warehouse -> open quantities. A part/warehouse with no bin record comes in as a "No bin" record (bin "").
+let DET = new Map(), DET_META = null;
+// Same columns and order as the Sage Item Inquiry "Quantities" grid.
+const DET_F = [["qoh", "On Hand"], ["po", "On PO"], ["so", "On SO"], ["bo", "On Bk Ord"], ["com", "Committed"], ["wo", "On W/T"],
+  ["rwo", "Req for W/T"], ["avail", "Available"], ["ship", "In Shipping"], ["ohls", "On Hand Less Ship"]];
+const detZero = () => Object.fromEntries(DET_F.map(([k]) => [k, 0]));
+function detSum(item, wh) {
+  const t = detZero(), m = DET.get(item);
+  if (m) for (const [w, d] of m) if (!wh || w === wh) for (const [k] of DET_F) t[k] += d[k];
+  return t;
+}
+// Open activity in the item warehouse detail: on PO, SO, back order, committed or work ticket.
+// Lets the "On hand, PO or SO > 0" filter keep a warehouse row with nothing on hand but something on order.
+const OPEN_F = ["po", "so", "bo", "com", "wo", "rwo"];
+const hasOpen = (item, wh) => { const d = DET.get(item)?.get(wh); return !!d && OPEN_F.some(k => d[k] > 0); };
 const PAGE = 200;
 const DEFAULTS = {q: "", wh: "", bin: "", item: "", pstatus: "", status: "instock", minqty: "", maxqty: "", nobin: "", multi: ""};
 const S = {...DEFAULTS, tab: "part", sort: {}, shown: PAGE};
@@ -373,12 +387,20 @@ const QV = {
 
 // Service / non-stock item codes that are never physical inventory — removed from every tab, total and kit check.
 // Exact item codes only (e.g. "ENGINEERING CHUTE FROM INDY" is a real part and stays). Add codes here as needed.
-const SERVICE_ITEMS = /^(FREIGHT|TRAVEL|LABOR(-.*)?|ENGINEERING( & MANAGEMENT)?|INSTALLATION( \/ .*)?|REPACKAGING SERVICE|TAX( CREDIT)?|FEE|PACKAGING MATERIAL FEE|DISCOUNT)$/i;
+const SERVICE_ITEMS = /^(FREIGHT|TRAVEL|LABOR(-.*)?|ENGINEERING( & MANAGEMENT)?|INSTALLATION( \/ .*|-\d+)?|REPACKAGING SERVICE|TAX( CREDIT)?|FEE|PACKAGING MATERIAL FEE|DISCOUNT|MATERIALS|PILS \d+ (MATERIAL|LABOR)|SUPPORT|1003-42010)$/i;
 let HIDDEN = {items: 0, rows: 0};
 
 function load(raw) {
   META = raw;
   WH = new Map(raw.wh.map(([c, n]) => [c, n || ""]));
+  if (raw.det) { // a newer bin export loaded in the browser has no detail, so the embedded detail is kept
+    DET = new Map(); DET_META = {source: raw.det.source, asof: raw.det.asof};
+    for (const d of raw.det.rows) {
+      const item = raw.items[d[0]][0], wc = raw.wh[d[1]][0];
+      let m = DET.get(item); if (!m) DET.set(item, m = new Map());
+      m.set(wc, Object.fromEntries(DET_F.map(([k], i) => [k, +d[i + 2] || 0])));
+    }
+  }
   const hiddenItems = new Set();
   raw = {...raw, rows: raw.rows.filter(r => { const code = raw.items[r[2]][0]; if (SERVICE_ITEMS.test(code)) { hiddenItems.add(code); return false; } return true; })};
   HIDDEN = {items: hiddenItems.size, rows: META.rows.length - raw.rows.length, codes: [...hiddenItems].sort()};
@@ -396,7 +418,8 @@ function load(raw) {
   ITEM_KEY = new Map([...BY_ITEM.keys()].map(k => [k.toLowerCase(), k])); // case-insensitive lookup for kit lists
   buildWhSelect(); buildBinList();
   $("meta").textContent = `${raw.source} · ${raw.asof} · ${nf0.format(ROWS.length)} bin records · ${nf0.format(BY_ITEM.size)} parts` +
-    (HIDDEN.items ? ` · ${HIDDEN.items} service items hidden` : "");
+    (HIDDEN.items ? ` · ${HIDDEN.items} service items hidden` : "") +
+    (DET_META ? ` · ${DET_META.source} · ${DET_META.asof}` : "");
   $("meta").title = HIDDEN.items ? `Hidden service / non-stock items (${HIDDEN.rows} records):\n${HIDDEN.codes.join("\n")}` : "";
 }
 
@@ -430,7 +453,7 @@ function filtered(loose = false) {
     if (bin && !r.bin.toLowerCase().includes(bin)) return false;
     if (item && !r.item.toLowerCase().includes(item)) return false;
     switch (S.status) {
-      case "instock": if (r.qoh <= 0) return false; break;
+      case "instock": if (r.qoh <= 0 && !hasOpen(r.item, r.wh)) return false; break;
       case "zero": if (r.qoh !== 0) return false; break;
       case "committed": if (r.com <= 0) return false; break;
       case "short": if (r.avail >= 0) return false; break;
@@ -481,20 +504,27 @@ const partStatus = t => t.avail < 0 ? "need" : t.com > 0 ? "committed" : t.qoh >
 const statusPill = k => `<span class="pill ${PSTATUS[k][1]}">${PSTATUS[k][0]}</span>`;
 
 const TABS = {
+  // One row per part + warehouse, laid out like the Sage Item Inquiry "Quantities" grid (numbers from vItemWarehouseDetail),
+  // plus the bin locations vItemQuantitiesbyBin has for the same warehouse + item code.
   part: {
-    noun: "parts", def: {key: "qoh", dir: -1},
+    noun: "part / warehouse rows", def: {key: "item", dir: 1},
     cols: [
-      ["item", "Item code", g => `<td title="${esc(g.item)}"><button class="lnk" data-item="${esc(g.item)}">${esc(g.item)}</button></td>`, g => g.item],
+      ["item", "Item code", g => `<td title="${esc(g.item)}"><button class="lnk" data-item="${esc(g.item)}">${esc(g.item)}</button></td>`, g => g.item + "|" + g.wh],
       ["desc", "Description", g => `<td title="${esc(g.desc)}">${esc(g.desc)}</td>`, g => g.desc],
-      ["nwh", "Warehouses", g => `<td class="num"><button class="lnk" data-pwh="${esc(g.item)}" title="See which warehouses hold this part">${nf0.format(g.nwh)}</button></td>`, g => g.nwh, 1],
-      ["qoh", "On hand", g => `<td class="num${g.qoh === 0 ? " zero" : g.qoh < 0 ? " neg" : ""}"><button class="lnk" data-ploc="${esc(g.item)}" title="See bin locations">${nf.format(g.qoh)}</button></td>`, g => g.qoh, 1],
-      ["com", "Committed", g => numCell(g.com), g => g.com, 1],
-      ["avail", "Available", g => numCell(g.avail), g => g.avail, 1],
+      ["wh", "Whse", g => `<td><span class="wh">${esc(g.wh)}</span></td>`, g => g.wh],
+      ["whn", "Warehouse", g => `<td title="${esc(g.whn || "")}">${esc(g.whn || "—")}</td>`, g => g.whn || ""],
+      ...DET_F.map(([k, l]) => [k, l, g => numCell(g.det[k]), g => g.det[k], 1]),
+      ["bins", "Bin location", g => `<td class="locs-cell" title="${esc(g.bins.map(r => `${r.bin || "No bin"}: ${nf.format(r.qoh)}`).join("\n"))}">${g.bins.length ? g.bins.map(r => binCell(r.bin)).join(" ") : binCell("")}</td>`, g => g.bins.map(r => r.bin).join(" ")],
       ["st", "Status", g => `<td>${statusPill(g.st)}</td>`, g => PSTATUS[g.st][2]],
     ],
-    data: rows => group(rows, r => r.item, r => ({item: r.item, desc: r.desc})).map(g => {
-      g.locs = g.rows.slice().sort((a, b) => b.qoh - a.qoh);
-      g.nwh = new Set(g.rows.map(r => r.wh)).size; g.st = partStatus(g); return g;
+    data: rows => group(rows, r => r.item + "|" + r.wh, r => ({item: r.item, desc: r.desc, wh: r.wh, whn: r.whn})).map(g => {
+      // Bins for this warehouse + item from the bin report (not only the filtered ones): bins holding stock first.
+      const all = (BY_ITEM.get(g.item) || []).filter(r => r.wh === g.wh && r.bin).sort((a, b) => b.qoh - a.qoh);
+      g.bins = all.some(r => r.qoh !== 0) ? all.filter(r => r.qoh !== 0) : all;
+      // no detail row (e.g. a bin export loaded without one): fall back to the bin report sums
+      const d = DET.get(g.item)?.get(g.wh);
+      g.det = d || {...detZero(), qoh: g.qoh, com: g.com, avail: g.avail, ohls: g.qoh};
+      g.st = partStatus(g.det); return g;
     }),
   },
   wh: {
@@ -512,24 +542,6 @@ const TABS = {
       g.nbin = new Set(g.rows.map(r => r.bin)).size; g.nitem = new Set(g.rows.map(r => r.item)).size; return g;
     }),
   },
-  // Stock on hand with no bin location: bin 0-00-0-0 (received by end user) or blank.
-  // "Suggested bins" = bins where the same part is already stored: same warehouse first, then bins holding stock, then most stock.
-  nobin: {
-    noun: "records with stock but no bin location", def: {key: "qoh", dir: -1}, allRows: true,
-    cols: [
-      ["wh", "Warehouse", r => `<td>${whCell(r.wh, r.whn)}</td>`, r => r.wh],
-      ["item", "Item code", r => `<td title="${esc(r.item)}"><button class="lnk" data-item="${esc(r.item)}">${esc(r.item)}</button></td>`, r => r.item],
-      ["desc", "Description", r => `<td title="${esc(r.desc)}">${esc(r.desc)}</td>`, r => r.desc],
-      ["bin", "Current bin", r => `<td>${binCell(r.bin)}</td>`, r => r.bin],
-      ["qoh", "On hand", r => numCell(r.qoh), r => r.qoh, 1],
-      ["com", "Committed", r => numCell(r.com), r => r.com, 1],
-      ["cost", "Unit cost", r => numCell(r.cost, money), r => r.cost, 1],
-      ["sug", "Suggested bins (part already stored here)", r => `<td class="locs-cell" title="${esc(r.sug.map(s => `${s.wh} · ${s.bin} · ${nf.format(s.qoh)} on hand`).join("\n"))}"><div class="locs">${r.sug.length ? r.sug.slice(0, 3).map(s => `<span class="loc ${s.wh === r.wh ? "sug" : ""}"><b>${esc(s.wh)}</b> · ${esc(s.bin)}${s.qoh ? ` · ${nf.format(s.qoh)}` : ""}</span>`).join("") + (r.sug.length > 3 ? `<span class="loc more" data-item="${esc(r.item)}">+${r.sug.length - 3} more</span>` : "") : `<span class="zero">None</span>`}</div></td>`, r => r.sug.length, 1],
-    ],
-    data: rows => rows.filter(r => r.qoh > 0 && NO_BIN.has(r.bin)).map(r => ({...r,
-      sug: BY_ITEM.get(r.item).filter(x => !NO_BIN.has(x.bin))
-        .sort((a, b) => (b.wh === r.wh) - (a.wh === r.wh) || (b.qoh > 0) - (a.qoh > 0) || b.qoh - a.qoh)})),
-  },
 };
 
 /* ---------- render ---------- */
@@ -538,8 +550,6 @@ let LOOSE_ROWS = [];
 function render() {
   CUR_ROWS = filtered();
   LOOSE_ROWS = filtered(true);
-  const nb = LOOSE_ROWS.filter(r => r.qoh > 0 && NO_BIN.has(r.bin)).length;
-  $("nobin-n").textContent = nb ? nf0.format(nb) : "";
   renderKpis();
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
   const qv = Object.keys(QV).find(k => Object.entries(QV[k]).every(([f, v]) => S[f] === v)) || "";
@@ -572,13 +582,7 @@ function render() {
 
   $("countl").innerHTML = `<b>${nf0.format(data.length)} ${T.noun}</b>` + ` · <b>${nf0.format(CUR_ROWS.length)} matching bin records</b>` +
     (S.wh ? ` · Warehouse <b>${esc(whLabel(S.wh))}</b>` : "");
-  if (S.tab === "nobin") {
-    const v = data.reduce((a, r) => a + r.qoh, 0), withSug = data.filter(r => r.sug.length).length;
-    $("countl").innerHTML = `<b>${nf0.format(data.length)} ${T.noun}</b> · <b>${nf0.format(v)} units</b> · ${nf0.format(withSug)} have a suggested bin` +
-      (S.wh ? ` · Warehouse <b>${esc(whLabel(S.wh))}</b>` : "");
-  }
-  $("countr").textContent = S.tab === "part" ? "Click a Warehouses count to list its warehouses, or an On hand quantity to see its bin locations."
-    : S.tab === "nobin" ? "Bin 0-00-0-0 = received by end user. Green = a bin in the same warehouse already holds this part. Ignores the quantity filters."
+  $("countr").textContent = S.tab === "part" ? ""
     : "Click a warehouse to see its parts.";
 }
 
@@ -725,7 +729,7 @@ function computeKits() {
       const avail = Math.max(0, basis === "qoh" ? qoh : qoh - com);
       parts.set(code, {code, found: !!key, desc: all[0]?.desc || "", rows, qoh, com, avail, left: avail,
         bins: rows.filter(r => binQty(r) > 0).sort((a, b) => binQty(b) - binQty(a)),
-        cost: (all.find(r => r.cost > 0) || {}).cost || 0, need: 0, kits: []});
+        cost: (all.find(r => r.cost > 0) || {}).cost || 0, need: 0, kits: [], po: key ? detSum(key, wh).po : 0});
     }
     return {p: parts.get(code), viaAlt};
   };
@@ -822,15 +826,15 @@ function renderKitReport() {
       </div>
       <div class="kitbar"><span class="src"><b>All kits combined</b> · quantities summed across kits · stock from ${esc(whTxt)}</span>${hint}</div>
       <div class="tbl"><table>
-        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th><th class="num">On hand</th><th class="num">Available</th><th>Bin locations</th><th class="num">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th><th class="num">On hand</th><th class="num">Available</th><th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
         <tbody>${vis.length ? vis.map(l => `<tr>
           ${codeCell(l)}
           <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
           <td class="locs-cell" title="${esc(l.p.kits.map(x => `${x.kit.name}: ${nf.format(x.need)}`).join("\n"))}"><div class="locs">${l.p.kits.map(x => `<span class="loc kitc">${esc(x.kit.name.split(" · ")[0])} · ${nf.format(x.need)}</span>`).join("")}</div></td>
           ${numCell(l.need)}${numCell(l.p.qoh)}${numCell(l.p.avail)}
           <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
-          ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
-        : `<tr><td colspan="10" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+          ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+        : `<tr><td colspan="11" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
       </table></div>`;
     return;
   }
@@ -849,26 +853,26 @@ function renderKitReport() {
     </div>
     <div class="kitbar"><span class="src">${k.title ? `<b>${esc(k.title)}</b> · ` : ""}${esc(k.source)} · parts from “${esc(k.itemCol)}”${k.qtyNames.length ? ` · qty/kit = ${esc(k.qtyNames.join(" + "))}` : ""} · ${nf0.format(R.n)} kit${R.n === 1 ? "" : "s"} · stock from ${esc(whTxt)}${multi ? ` · priority ${KITS.indexOf(k) + 1} of ${KITS.length}` : ""}${nf_ ? ` · ${nf_} part${nf_ === 1 ? "" : "s"} not found in inventory` : ""}${k.noQtyCol ? " · no quantity column found, so 1 per kit was assumed" : ""}</span>${hint}</div>
     <div class="tbl"><table>
-      <thead><tr><th>#</th><th>Item code</th><th>Description</th><th class="num">Qty / kit</th><th class="num">Required</th><th class="num">Available</th>${multi ? `<th class="num" title="Stock left for this kit after higher-priority kits">From stock</th>` : ""}<th>Bin locations</th><th class="num">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+      <thead><tr><th>#</th><th>Item code</th><th>Description</th><th class="num">Qty / kit</th><th class="num">Required</th><th class="num">Available</th>${multi ? `<th class="num" title="Stock left for this kit after higher-priority kits">From stock</th>` : ""}<th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
       <tbody>${vis.length ? vis.map(l => `<tr>
         <td class="zero">${l.n}</td>
         ${codeCell(l)}
         <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
         ${numCell(l.per)}${numCell(l.need)}${numCell(l.p.avail)}${multi ? numCell(l.take) : ""}
         <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
-        ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
-      : `<tr><td colspan="${multi ? 11 : 10}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+        ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+      : `<tr><td colspan="${multi ? 12 : 11}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
     </table></div>`;
 }
 
 function kitCsv() {
   const C = KIT_CALC, bins = p => p.bins.map(r => `${r.wh}/${r.bin || "No bin"}/${C.binQty(r)}`).join("; ");
   if ($("kitrep").value === "all") {
-    return [["Item code (Retiina PN)", "Description", "Used in (kit: qty)", "Required", "On hand", "Committed", "Available", "Bin locations (warehouse/bin/qty)", "To order", "Unit cost", "Est. order cost", "Status"],
-      ...KIT_ROWS.map(l => [l.code, l.desc, l.p.kits.map(x => `${x.kit.name}: ${x.need}`).join("; "), l.need, l.p.qoh, l.p.com, l.p.avail, bins(l.p), l.order, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+    return [["Item code (Retiina PN)", "Description", "Used in (kit: qty)", "Required", "On hand", "Committed", "Available", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
+      ...KIT_ROWS.map(l => [l.code, l.desc, l.p.kits.map(x => `${x.kit.name}: ${x.need}`).join("; "), l.need, l.p.qoh, l.p.com, l.p.avail, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
   }
-  return [["Kit", "Kit qty", "#", "Item code (Retiina PN)", "Description", "Qty per kit", "Required", "On hand", "Committed", "Available", "From stock", "Bin locations (warehouse/bin/qty)", "To order", "Unit cost", "Est. order cost", "Status"],
-    ...KIT_ROWS.map(l => [l.kit.name, l.kit.n, l.n, l.code, l.desc, l.per, l.need, l.p.qoh, l.p.com, l.p.avail, l.take, bins(l.p), l.order, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+  return [["Kit", "Kit qty", "#", "Item code (Retiina PN)", "Description", "Qty per kit", "Required", "On hand", "Committed", "Available", "From stock", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
+    ...KIT_ROWS.map(l => [l.kit.name, l.kit.n, l.n, l.code, l.desc, l.per, l.need, l.p.qoh, l.p.com, l.p.avail, l.take, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
 }
 
 /* ---------- part modal ---------- */
@@ -881,9 +885,10 @@ function openItem(item, mode = "loc", subset = null) {
   const t = rows.reduce((a, r) => (a.qoh += r.qoh, a.com += r.com, a.avail += r.avail, a.value += r.value, a), {qoh: 0, com: 0, avail: 0, value: 0});
   $("mt").textContent = item + (mode === "wh" ? " — warehouses" : " — bin locations");
   $("md").textContent = (rows[0]?.desc || "") + (subset ? " · matching the current filters" : " · all warehouses");
-  const stocked = rows.filter(r => r.qoh > 0);
-  $("ms").innerHTML = [[nf.format(t.qoh), "On hand"], [nf.format(t.com), "Committed"], [nf.format(t.avail), "Available"],
-    [new Set(stocked.map(r => r.wh)).size, "Warehouses with stock"]]
+  const stocked = rows.filter(r => r.qoh > 0), dt = detSum(item, subset ? S.wh : "");
+  const q = mode === "wh" && DET.has(item) ? dt : t; // warehouses window = Sage warehouse detail numbers; bin window = bin report
+  $("ms").innerHTML = [[nf.format(q.qoh), "On hand"], [nf.format(q.com), "Committed"], [nf.format(q.avail), "Available"],
+    [nf.format(dt.po), "On PO"], [nf.format(dt.so), "On SO"], [new Set(stocked.map(r => r.wh)).size, "Warehouses with stock"]]
     .map(([v, l]) => `<div><b>${v}</b><small>${l}</small></div>`).join("");
   renderModal(); $("ov").classList.add("show");
 }
@@ -891,10 +896,17 @@ function renderModal() {
   const all = (MODAL.rows || BY_ITEM.get(MODAL.item) || []).slice().sort((a, b) => a.wh.localeCompare(b.wh, undefined, {numeric: true}) || b.qoh - a.qoh); // warehouse 000 first, biggest qty first within a warehouse
   const rows = $("mzero").checked ? all : all.filter(r => r.qoh !== 0 || r.com !== 0);
   if (MODAL.mode === "wh") {
-    const gs = group(rows, r => r.wh, r => ({wh: r.wh, whn: r.whn})).sort((a, b) => a.wh.localeCompare(b.wh, undefined, {numeric: true}));
-    $("mhead").innerHTML = `<tr><th>Warehouse</th><th>Bins</th><th class="num">On hand</th><th class="num">Committed</th><th class="num">Available</th></tr>`;
-    $("mb").innerHTML = gs.length ? gs.map(g => `<tr><td>${whCell(g.wh, g.whn)}</td><td title="${esc(g.rows.map(r => r.bin || "No bin").join(", "))}">${g.rows.map(r => binCell(r.bin)).join(" ")}</td>${numCell(g.qoh)}${numCell(g.com)}${numCell(g.avail)}</tr>`).join("")
-      : `<tr><td colspan="5" class="empty">No stock on hand. Tick “Show zero-quantity bins” to see where it has been recorded.</td></tr>`;
+    // Laid out like the Sage Item Inquiry "Quantities" grid: one row per warehouse, numbers from the item warehouse detail.
+    // Warehouses come from the bin records plus any detail row (e.g. on PO with nothing in a bin yet); bins are listed last.
+    const gs = group(rows, r => r.wh, r => ({wh: r.wh, whn: r.whn}));
+    const det = DET.get(MODAL.item) || new Map(), have = new Set(gs.map(g => g.wh));
+    for (const [w] of det) if (!have.has(w) && (!MODAL.rows || !S.wh || w === S.wh)) gs.push({wh: w, whn: WH.get(w), rows: [], qoh: 0, com: 0, avail: 0});
+    gs.sort((a, b) => a.wh.localeCompare(b.wh, undefined, {numeric: true}));
+    const src = DET_META ? `${DET_META.source} · ${DET_META.asof}` : "no item warehouse detail loaded";
+    $("mhead").innerHTML = `<tr><th>Whse</th><th>Description</th>` +
+      DET_F.map(([, l]) => `<th class="num" title="${esc(src)}">${l}</th>`).join("") + `<th>Bin locations</th></tr>`;
+    $("mb").innerHTML = gs.length ? gs.map(g => { const d = det.get(g.wh) || detZero(); return `<tr><td><span class="wh">${esc(g.wh)}</span></td><td title="${esc(g.whn || "")}">${esc(g.whn || "—")}</td>${DET_F.map(([k]) => numCell(d[k])).join("")}<td title="${esc(g.rows.map(r => `${r.bin || "No bin"}: ${nf.format(r.qoh)}`).join("\n"))}">${g.rows.length ? g.rows.map(r => binCell(r.bin)).join(" ") : `<span class="zero">—</span>`}</td></tr>`; }).join("")
+      : `<tr><td colspan="${3 + DET_F.length}" class="empty">No stock on hand. Tick “Show zero-quantity bins” to see where it has been recorded.</td></tr>`;
     $("mnote").textContent = `${gs.length} warehouse${gs.length === 1 ? "" : "s"} · ${rows.length} bin records`;
   } else {
     $("mhead").innerHTML = `<tr><th>Warehouse</th><th>Bin location</th><th class="num">On hand</th><th class="num">Committed</th><th class="num">Available</th><th class="num">Unit cost</th></tr>`;
@@ -1010,10 +1022,8 @@ $("csv").onclick = () => {
   }
   const T = TABS[S.tab];
   const plain = {
-    part: [["Item code", g => g.item], ["Description", g => g.desc], ["Warehouses", g => g.nwh], ["Locations", g => g.locs.map(r => `${r.wh}/${r.bin || "No bin"}/${r.qoh}`).join("; ")], ["On hand", g => g.qoh], ["Committed", g => g.com], ["Available", g => g.avail], ["Status", g => PSTATUS[g.st][0]]],
+    part: [["Item code", g => g.item], ["Description", g => g.desc], ["Whse", g => g.wh], ["Warehouse", g => g.whn], ...DET_F.map(([k, l]) => [l, g => g.det[k]]), ["Bin location", g => g.bins.map(r => r.bin).join("; ") || "No bin"], ["Status", g => PSTATUS[g.st][0]]],
     wh: [["Warehouse", g => g.wh], ["Name", g => g.whn], ["Bins", g => g.nbin], ["Parts", g => g.nitem], ["Bin records", g => g.rows.length], ["On hand", g => g.qoh], ["Committed", g => g.com]],
-    nobin: [["Warehouse", r => r.wh], ["Item code", r => r.item], ["Description", r => r.desc], ["Current bin", r => r.bin || "(blank)"], ["On hand", r => r.qoh], ["Committed", r => r.com], ["Unit cost", r => r.cost],
-      ["Suggested bins (warehouse/bin/qty)", r => r.sug.map(s => `${s.wh}/${s.bin}/${s.qoh}`).join("; ")], ["Assigned bin", () => ""]],
   }[S.tab];
   const q = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
   const csv = [plain.map(c => q(c[0])).join(","), ...CURRENT.map(d => plain.map(c => q(c[1](d))).join(","))].join("\r\n");
