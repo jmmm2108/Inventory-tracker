@@ -44,10 +44,12 @@ def is_site(name):
     return "site" in name.lower()
 
 
+# Also left out by code: 021 = trash warehouse.
+EXCLUDE_WH = {"021"}
 SITE_WH = {}  # code -> name of the warehouses left out
 rows = list(rows)
 for r in rows:
-    if is_site(s(r[col["WarehouseName"]])):
+    if is_site(s(r[col["WarehouseName"]])) or s(r[col["WarehouseCode"]]).zfill(3) in EXCLUDE_WH:
         SITE_WH[s(r[col["WarehouseCode"]]).zfill(3)] = s(r[col["WarehouseName"]])
 
 for r in rows:
@@ -110,7 +112,7 @@ if os.path.exists(det_src):
         if not code:
             continue
         wname = s(r[dc["WarehouseName"]]) if "WarehouseName" in dc else ""
-        if w in SITE_WH or is_site(wname):
+        if w in SITE_WH or w in EXCLUDE_WH or is_site(wname):
             SITE_WH.setdefault(w, wname)
             continue
         if not any(vals):  # all-zero row: keep the part listed (as a zero "No bin" record) only if nothing else has it
@@ -162,6 +164,6 @@ html = html.replace("/*__DATA__*/null", payload, 1)
 dest = os.path.join(HERE, "index.html")
 with open(dest, "w", encoding="utf-8") as f:
     f.write(html)
-print(f"Left out {len(SITE_WH)} 'Site' warehouses: " + ", ".join(f"{c} {nm}" for c, nm in sorted(SITE_WH.items())))
+print(f"Left out {len(SITE_WH)} warehouses ('Site' + trash): " + ", ".join(f"{c} {nm}" for c, nm in sorted(SITE_WH.items())))
 print(f"Wrote {dest}: {len(out):,} bin records, {len(items):,} parts, {len(wh)} warehouses, "
       f"{os.path.getsize(dest) / 1e6:.1f} MB")

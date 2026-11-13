@@ -158,6 +158,7 @@ tbody tr.click{cursor:pointer}
 td.short{color:var(--red);font-weight:700}
 .pill.nf{background:#eef0f4;color:#4b5565}
 .pill.part{background:#fdf3e1;color:#8a5a12}
+.pill.po{background:var(--blue-l);color:#20406b}
 
 @media (max-width:1100px){
   .kitin{grid-template-columns:1fr}
@@ -208,6 +209,7 @@ td.short{color:var(--red);font-weight:700}
         <select id="pstatus">
           <option value="">All statuses</option>
           <option value="need">Need to order</option>
+          <option value="onpo">On PO</option>
           <option value="committed">Committed</option>
           <option value="instock">In stock</option>
           <option value="out">Out of stock</option>
@@ -390,9 +392,16 @@ const QV = {
 const SERVICE_ITEMS = /^(FREIGHT|TRAVEL|LABOR(-.*)?|ENGINEERING( & MANAGEMENT)?|INSTALLATION( \/ .*|-\d+)?|REPACKAGING SERVICE|TAX( CREDIT)?|FEE|PACKAGING MATERIAL FEE|DISCOUNT|MATERIALS|PILS \d+ (MATERIAL|LABOR)|SUPPORT|1003-42010)$/i;
 let HIDDEN = {items: 0, rows: 0};
 
+// Warehouses with "Site" in the name (job-site / site-material) are left out everywhere — also done in build_tracker.py,
+// repeated here so a bin export loaded straight into the page is treated the same way.
+const EXCLUDE_WH = new Set(["021"]); // 021 = trash warehouse
+const isSiteWh = (name, code) => /site/i.test(name || "") || EXCLUDE_WH.has(String(code || "").padStart(3, "0"));
 function load(raw) {
   META = raw;
-  WH = new Map(raw.wh.map(([c, n]) => [c, n || ""]));
+  const site = new Set(raw.wh.map((w, i) => isSiteWh(w[1], w[0]) ? i : -1).filter(i => i >= 0));
+  if (site.size) raw = {...raw, wh: raw.wh.map((w, i) => site.has(i) ? [w[0], ""] : w), rows: raw.rows.filter(r => !site.has(r[0])),
+    det: raw.det && {...raw.det, rows: raw.det.rows.filter(d => !site.has(d[1]))}};
+  WH = new Map(raw.wh.filter((w, i) => !site.has(i)).map(([c, n]) => [c, n || ""]));
   if (raw.det) { // a newer bin export loaded in the browser has no detail, so the embedded detail is kept
     DET = new Map(); DET_META = {source: raw.det.source, asof: raw.det.asof};
     for (const d of raw.det.rows) {
@@ -402,8 +411,9 @@ function load(raw) {
     }
   }
   const hiddenItems = new Set();
-  raw = {...raw, rows: raw.rows.filter(r => { const code = raw.items[r[2]][0]; if (SERVICE_ITEMS.test(code)) { hiddenItems.add(code); return false; } return true; })};
-  HIDDEN = {items: hiddenItems.size, rows: META.rows.length - raw.rows.length, codes: [...hiddenItems].sort()};
+  const kept = raw.rows.filter(r => { const code = raw.items[r[2]][0]; if (SERVICE_ITEMS.test(code)) { hiddenItems.add(code); return false; } return true; });
+  HIDDEN = {items: hiddenItems.size, rows: raw.rows.length - kept.length, codes: [...hiddenItems].sort()};
+  raw = {...raw, rows: kept};
   ROWS = raw.rows.map(r => {
     const [wc] = raw.wh[r[0]], bin = raw.bins[r[1]], [item, desc] = raw.items[r[2]];
     const qoh = +r[3] || 0, com = +r[4] || 0, avail = +r[5] || 0, cost = +r[6] || 0;
@@ -467,13 +477,13 @@ function filtered(loose = false) {
     return true;
   });
   if (!S.pstatus) return rows;
-  // Part status is judged on each part's totals within the filtered rows.
-  const tot = new Map();
+  // Part status is judged per part + warehouse (one By part row): detail numbers, else the bin totals.
+  const tot = new Map(), key = r => r.item + "|" + r.wh;
   for (const r of rows) {
-    const t = tot.get(r.item) || {qoh: 0, com: 0, avail: 0};
-    t.qoh += r.qoh; t.com += r.com; t.avail += r.avail; tot.set(r.item, t);
+    const t = tot.get(key(r)) || {qoh: 0, com: 0, avail: 0};
+    t.qoh += r.qoh; t.com += r.com; t.avail += r.avail; tot.set(key(r), t);
   }
-  return rows.filter(r => partStatus(tot.get(r.item)) === S.pstatus);
+  return rows.filter(r => partStatus(DET.get(r.item)?.get(r.wh) || tot.get(key(r))) === S.pstatus);
 }
 
 function group(rows, keyFn, init) {
@@ -491,16 +501,20 @@ const binCell = b => b === END_USER_BIN ? `<span class="bin none" title="No bin 
   : !b ? `<span class="bin none">No bin</span>` : `<span class="bin">${esc(b)}</span>`;
 const whCell = (c, n) => `<span class="wh">${esc(c)}</span>${n ? `<span class="whn">${esc(n)}</span>` : ""}`;
 const numCell = (v, f = nf.format) => `<td class="num${v === 0 ? " zero" : v < 0 ? " neg" : ""}">${f(v)}</td>`;
-// Part status from the part's totals (Available = On hand − Committed):
-//   need      – committed is more than on hand (available < 0)
-//   committed – some qty committed, on hand still covers it
+// Status from the item warehouse detail (per part + warehouse row):
+//   need      – On hand + On PO < On SO: sales orders not covered even with open POs
+//   onpo      – On hand alone does not cover On SO (or nothing on hand), but On hand + On PO does
+//   committed – sales orders covered by on hand, some qty committed
 //   instock   – on hand, nothing committed
-//   out       – nothing on hand and nothing committed
+//   out       – nothing on hand, nothing on order
 const PSTATUS = {
-  need: ["Need to order", "short", 0], committed: ["Committed", "com", 1],
-  instock: ["In stock", "in", 2], out: ["Out of stock", "out", 3],
+  need: ["Need to order", "short", 0], onpo: ["On PO", "po", 1], committed: ["Committed", "com", 2],
+  instock: ["In stock", "in", 3], out: ["Out of stock", "out", 4],
 };
-const partStatus = t => t.avail < 0 ? "need" : t.com > 0 ? "committed" : t.qoh > 0 ? "instock" : "out";
+const partStatus = t => {
+  const qoh = t.qoh || 0, po = t.po || 0, so = t.so || 0;
+  return qoh + po < so ? "need" : so > qoh || (qoh <= 0 && po > 0) ? "onpo" : t.com > 0 ? "committed" : qoh > 0 ? "instock" : "out";
+};
 const statusPill = k => `<span class="pill ${PSTATUS[k][1]}">${PSTATUS[k][0]}</span>`;
 
 const TABS = {
@@ -711,8 +725,15 @@ async function addKitFiles(files) {
   if (errs.length) setTimeout(() => toast(errs.join("  ·  ")), added.length ? 2300 : 0);
 }
 
-const KSTATUS = {ok: ["Available", "in", 3], partial: ["Partial — order rest", "part", 1], order: ["Need to order", "short", 0], nf: ["Not in inventory", "nf", 2]};
-const kitStatus = (found, order, fromStock) => !found ? "nf" : order === 0 ? "ok" : fromStock > 0 ? "partial" : "order";
+const KSTATUS = {ok: ["Available", "in", 3], onpo: ["On PO", "po", 1], order: ["Need to order", "short", 0], nf: ["Not in inventory", "nf", 2]};
+// To order (item warehouse detail numbers, summed over "Pull stock from"):
+//   supply = On hand + On PO     when Required = On SO (the PO was placed for this kit's sales order)
+//   supply = On hand             otherwise (On hand + On PO − Required − On PO: the PO is not counted)
+//   To order = Required − supply, never below 0. Required = the part's total across all loaded kits; with several kits
+//   the supply is handed out in priority order (top kit first).
+// Status: Need to order when To order > 0; Available when bin stock alone covers it; else On PO.
+const kitSupply = p => Math.max(0, p.det.qoh + (p.need === p.det.so ? p.det.po : 0));
+const kitStatus = (p, order, need) => !p.found ? "nf" : order > 0 ? "order" : need <= p.avail ? "ok" : "onpo";
 
 function computeKits() {
   const wh = $("kitwh").value, basis = $("kitbasis").value;
@@ -729,28 +750,36 @@ function computeKits() {
       const avail = Math.max(0, basis === "qoh" ? qoh : qoh - com);
       parts.set(code, {code, found: !!key, desc: all[0]?.desc || "", rows, qoh, com, avail, left: avail,
         bins: rows.filter(r => binQty(r) > 0).sort((a, b) => binQty(b) - binQty(a)),
-        cost: (all.find(r => r.cost > 0) || {}).cost || 0, need: 0, kits: [], po: key ? detSum(key, wh).po : 0});
+        cost: (all.find(r => r.cost > 0) || {}).cost || 0, need: 0, kits: [], det: key ? detSum(key, wh) : detZero()});
     }
     return {p: parts.get(code), viaAlt};
   };
-  const kits = KITS.map(k => {
+  // pass 1: resolve every line and add up each part's total requirement
+  const pre = KITS.map(k => {
     const n = Math.max(0, +k.n || 0);
-    const lines = k.lines.map((l, i) => {
-      const {p, viaAlt} = resolve(l);
-      const need = l.qty * n, take = Math.min(need, p.left);
-      p.left -= take; p.need += need; p.kits.push({kit: k, need});
+    return {k, n, lines: k.lines.map((l, i) => {
+      const {p, viaAlt} = resolve(l), need = l.qty * n;
+      p.need += need; p.kits.push({kit: k, need});
       if (!p.desc) p.desc = l.desc;
-      const order = need - take;
+      return {l, i, p, viaAlt, need};
+    })};
+  });
+  for (const p of parts.values()) p.left = p.supply = kitSupply(p);
+  // pass 2: hand out the supply in kit priority order
+  const kits = pre.map(({k, n, lines: ls}) => {
+    const lines = ls.map(({l, i, p, viaAlt, need}) => {
+      const take = Math.min(need, p.left), order = need - take;
+      p.left -= take;
       return {kit: k, n: i + 1, p, code: p.code, orig: l.code, viaAlt, desc: l.desc || p.desc, per: l.qty, need, take, order,
-        ocost: order * p.cost, st: kitStatus(p.found, order, take), alone: l.qty > 0 ? Math.floor(p.avail / l.qty) : Infinity};
+        ocost: order * p.cost, st: kitStatus(p, order, need), alone: l.qty > 0 ? Math.floor(p.avail / l.qty) : Infinity};
     });
     const short = lines.filter(l => l.order > 0);
     return {k, n, lines, short: short.length, units: short.reduce((a, l) => a + l.order, 0), ocost: short.reduce((a, l) => a + l.ocost, 0),
       alone: Math.min(...lines.map(l => l.alone))};
   });
   const combined = [...parts.values()].map(p => {
-    const order = Math.max(0, p.need - p.avail);
-    return {p, code: p.code, desc: p.desc, need: p.need, take: p.need - order, order, ocost: order * p.cost, st: kitStatus(p.found, order, p.avail)};
+    const order = Math.max(0, p.need - p.supply);
+    return {p, code: p.code, desc: p.desc, need: p.need, take: p.need - order, order, ocost: order * p.cost, st: kitStatus(p, order, p.need)};
   });
   return {kits, combined, binQty, wh, basis};
 }
@@ -791,6 +820,10 @@ function locChips(p, binQty) {
 }
 const codeCell = l => `<td title="${esc(l.viaAlt ? `${l.orig} not in inventory — using Alt Retiina PN ${l.code}` : l.code)}">${l.p.found ? `<button class="lnk" data-kitem="${esc(l.code)}">${esc(l.code)}</button>` : esc(l.code)}${l.viaAlt ? `<span class="whn">alt for ${esc(l.orig)}</span>` : ""}</td>`;
 const pill = st => `<td><span class="pill ${KSTATUS[st][1]}">${KSTATUS[st][0]}</span></td>`;
+const USABLE_TH = `<th class="num" title="Stock the kit can use: on hand (or on hand − committed, per “Available qty means”), not counting bin 0-00-0-0">Usable for kit</th>`;
+const detHead = () => DET_F.map(([, l]) => `<th class="num" title="Sage item warehouse detail">${l}</th>`).join("");
+const detCells = p => DET_F.map(([k]) => numCell(p.det[k])).join("");
+const ORDER_TIP = "Required = On SO: Required − (On hand + On PO). Otherwise: Required − On hand. Never below 0";
 const orderCell = v => `<td class="num${v > 0 ? " short" : " zero"}">${nf.format(v)}</td>`;
 
 function renderKitReport() {
@@ -826,15 +859,15 @@ function renderKitReport() {
       </div>
       <div class="kitbar"><span class="src"><b>All kits combined</b> · quantities summed across kits · stock from ${esc(whTxt)}</span>${hint}</div>
       <div class="tbl"><table>
-        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th><th class="num">On hand</th><th class="num">Available</th><th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th>${detHead()}${USABLE_TH}<th>Bin locations</th><th class="num" title="${ORDER_TIP}">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
         <tbody>${vis.length ? vis.map(l => `<tr>
           ${codeCell(l)}
           <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
           <td class="locs-cell" title="${esc(l.p.kits.map(x => `${x.kit.name}: ${nf.format(x.need)}`).join("\n"))}"><div class="locs">${l.p.kits.map(x => `<span class="loc kitc">${esc(x.kit.name.split(" · ")[0])} · ${nf.format(x.need)}</span>`).join("")}</div></td>
-          ${numCell(l.need)}${numCell(l.p.qoh)}${numCell(l.p.avail)}
+          ${numCell(l.need)}${detCells(l.p)}${numCell(l.p.avail)}
           <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
-          ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
-        : `<tr><td colspan="11" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+          ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+        : `<tr><td colspan="${9 + DET_F.length}" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
       </table></div>`;
     return;
   }
@@ -853,26 +886,27 @@ function renderKitReport() {
     </div>
     <div class="kitbar"><span class="src">${k.title ? `<b>${esc(k.title)}</b> · ` : ""}${esc(k.source)} · parts from “${esc(k.itemCol)}”${k.qtyNames.length ? ` · qty/kit = ${esc(k.qtyNames.join(" + "))}` : ""} · ${nf0.format(R.n)} kit${R.n === 1 ? "" : "s"} · stock from ${esc(whTxt)}${multi ? ` · priority ${KITS.indexOf(k) + 1} of ${KITS.length}` : ""}${nf_ ? ` · ${nf_} part${nf_ === 1 ? "" : "s"} not found in inventory` : ""}${k.noQtyCol ? " · no quantity column found, so 1 per kit was assumed" : ""}</span>${hint}</div>
     <div class="tbl"><table>
-      <thead><tr><th>#</th><th>Item code</th><th>Description</th><th class="num">Qty / kit</th><th class="num">Required</th><th class="num">Available</th>${multi ? `<th class="num" title="Stock left for this kit after higher-priority kits">From stock</th>` : ""}<th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+      <thead><tr><th>#</th><th>Item code</th><th>Description</th><th class="num">Qty / kit</th><th class="num">Required</th>${detHead()}${USABLE_TH}${multi ? `<th class="num" title="Covered by On hand (+ On PO when Required = On SO), after higher-priority kits">Covered</th>` : ""}<th>Bin locations</th><th class="num" title="${ORDER_TIP}">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
       <tbody>${vis.length ? vis.map(l => `<tr>
         <td class="zero">${l.n}</td>
         ${codeCell(l)}
         <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
-        ${numCell(l.per)}${numCell(l.need)}${numCell(l.p.avail)}${multi ? numCell(l.take) : ""}
+        ${numCell(l.per)}${numCell(l.need)}${detCells(l.p)}${numCell(l.p.avail)}${multi ? numCell(l.take) : ""}
         <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
-        ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
-      : `<tr><td colspan="${multi ? 12 : 11}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+        ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+      : `<tr><td colspan="${(multi ? 11 : 10) + DET_F.length}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
     </table></div>`;
 }
 
 function kitCsv() {
   const C = KIT_CALC, bins = p => p.bins.map(r => `${r.wh}/${r.bin || "No bin"}/${C.binQty(r)}`).join("; ");
+  const dh = DET_F.map(([, l]) => l), dv = p => DET_F.map(([k]) => p.det[k]);
   if ($("kitrep").value === "all") {
-    return [["Item code (Retiina PN)", "Description", "Used in (kit: qty)", "Required", "On hand", "Committed", "Available", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
-      ...KIT_ROWS.map(l => [l.code, l.desc, l.p.kits.map(x => `${x.kit.name}: ${x.need}`).join("; "), l.need, l.p.qoh, l.p.com, l.p.avail, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+    return [["Item code (Retiina PN)", "Description", "Used in (kit: qty)", "Required", ...dh, "Usable for kit", "Bin locations (warehouse/bin/qty)", "To order", "Unit cost", "Est. order cost", "Status"],
+      ...KIT_ROWS.map(l => [l.code, l.desc, l.p.kits.map(x => `${x.kit.name}: ${x.need}`).join("; "), l.need, ...dv(l.p), l.p.avail, bins(l.p), l.order, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
   }
-  return [["Kit", "Kit qty", "#", "Item code (Retiina PN)", "Description", "Qty per kit", "Required", "On hand", "Committed", "Available", "From stock", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
-    ...KIT_ROWS.map(l => [l.kit.name, l.kit.n, l.n, l.code, l.desc, l.per, l.need, l.p.qoh, l.p.com, l.p.avail, l.take, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+  return [["Kit", "Kit qty", "#", "Item code (Retiina PN)", "Description", "Qty per kit", "Required", ...dh, "Usable for kit", "Covered", "Bin locations (warehouse/bin/qty)", "To order", "Unit cost", "Est. order cost", "Status"],
+    ...KIT_ROWS.map(l => [l.kit.name, l.kit.n, l.n, l.code, l.desc, l.per, l.need, ...dv(l.p), l.p.avail, l.take, bins(l.p), l.order, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
 }
 
 /* ---------- part modal ---------- */
