@@ -213,7 +213,7 @@ td.short{color:var(--red);font-weight:700}
       <div class="f">
         <label for="pstatus">Part status</label>
         <select id="pstatus">
-          <option value="">All statuses</option>
+          <option value="">Show all</option>
           <option value="need">Need to order</option>
           <option value="onpo">On PO</option>
           <option value="committed">Committed</option>
@@ -224,7 +224,7 @@ td.short{color:var(--red);font-weight:700}
       <div class="f">
         <label for="status">Bin quantity</label>
         <select id="status">
-          <option value="all">All bin records</option>
+          <option value="all">Show all</option>
           <option value="instock">On hand, PO or SO &gt; 0</option>
           <option value="zero">Zero on hand</option>
           <option value="committed">Has committed qty</option>
@@ -335,7 +335,7 @@ td.short{color:var(--red);font-weight:700}
         <div class="f"><label for="kitrep">Report</label><select id="kitrep"></select></div>
         <div class="f"><label for="kitwh">Pull stock from</label><select id="kitwh"></select></div>
         <div class="f"><label for="kitshow">Show</label>
-          <select id="kitshow"><option value="">All lines</option><option value="short">Only lines that need ordering</option><option value="ok">Only fully covered lines</option></select></div>
+          <select id="kitshow"><option value="">Show all</option><option value="short">Only lines that need ordering</option><option value="ok">Only fully covered lines</option></select></div>
         <div class="f"><label for="kitbasis">Available qty means</label>
           <select id="kitbasis"><option value="avail">On hand − committed</option><option value="qoh">On hand (ignore commitments)</option></select></div>
       </div>
@@ -383,7 +383,7 @@ function detSum(item, wh) {
 const OPEN_F = ["po", "so", "bo", "com", "wo", "rwo"];
 const hasOpen = (item, wh) => { const d = DET.get(item)?.get(wh); return !!d && OPEN_F.some(k => d[k] > 0); };
 const PAGE = 200;
-const DEFAULTS = {q: "", wh: "", bin: "", item: "", pstatus: "", status: "instock", minqty: "", maxqty: "", nobin: "", multi: ""};
+const DEFAULTS = {q: "", wh: "", bin: "", item: "", pstatus: "", status: "all", minqty: "", maxqty: "", nobin: "", multi: ""};
 const S = {...DEFAULTS, tab: "part", sort: {}, shown: PAGE};
 // Quick views: which filter values each chip sets.
 const QV = {
