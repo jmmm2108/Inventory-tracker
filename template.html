@@ -75,6 +75,12 @@ th.sorted .ar{color:var(--blue)}
 th.num,td.num{text-align:right}
 td{padding:14px 12px;border-bottom:1px solid var(--line2);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 tbody tr:hover td{background:#f7faff}
+/* frozen left columns (kit check): stay put while the table scrolls sideways */
+table.freeze .fz{position:sticky;z-index:2;background:var(--card)}
+table.freeze th.fz{background:var(--head);z-index:3}
+table.freeze tbody tr:hover td.fz{background:#f7faff}
+table.freeze .fz-last{box-shadow:inset -1px 0 0 var(--line)}
+table.freeze td.fz{max-width:280px}
 td.zero{color:var(--faint)}
 td.neg{color:var(--red);font-weight:600}
 .lnk{color:var(--blue-t);cursor:pointer;background:none;border:none;padding:0;font:inherit;text-align:left}
@@ -591,6 +597,7 @@ function render() {
   $("tbody").innerHTML = shown.length ? shown.map((d, i) =>
     `<tr${T.click ? ` class="click" data-i="${i}"` : ""}>${T.cols.map(c => c[2](d)).join("")}</tr>`).join("")
     : `<tr><td colspan="${T.cols.length}" class="empty">No inventory matches these filters.</td></tr>`;
+  freezeCols(S.tab === "part" ? 5 : 0, $("thead").closest("table")); // By part: Item code, Description, Whse, Warehouse, On Hand
   $("more").innerHTML = data.length > S.shown
     ? `<button class="btn sm" id="showmore">Show ${nf0.format(Math.min(PAGE * 5, data.length - S.shown))} more · ${nf0.format(S.shown)} of ${nf0.format(data.length)} shown</button>` : "";
 
@@ -824,6 +831,17 @@ const USABLE_TH = `<th class="num" title="Stock the kit can use: on hand (or on 
 const detHead = () => DET_F.map(([, l]) => `<th class="num" title="Sage item warehouse detail">${l}</th>`).join("");
 const detCells = p => DET_F.map(([k]) => numCell(p.det[k])).join("");
 const ORDER_TIP = "Required = On SO: Required − (On hand + On PO). Otherwise: Required − On hand. Never below 0";
+// Freeze the first n columns of the kit table: each cell sticks at the summed width of the columns before it.
+function freezeCols(n, tb = $("kitout").querySelector(".tbl table")) {
+  if (!tb) return;
+  tb.classList.toggle("freeze", n > 0); if (!n) return;
+  const rows = [...tb.rows].filter(r => r.cells.length >= n); // skip the "no lines match" row that spans every column
+  // 1) mark the cells first (their styles can change column widths), 2) then measure, 3) then pin
+  for (const row of rows) [...row.cells].slice(0, n).forEach((c, i) => { c.classList.add("fz"); if (i === n - 1) c.classList.add("fz-last"); });
+  const lefts = []; let x = 0;
+  for (const th of [...tb.tHead.rows[0].cells].slice(0, n)) { lefts.push(x); x += th.getBoundingClientRect().width; }
+  for (const row of rows) [...row.cells].slice(0, n).forEach((c, i) => { c.style.left = lefts[i] + "px"; });
+}
 const orderCell = v => `<td class="num${v > 0 ? " short" : " zero"}">${nf.format(v)}</td>`;
 
 function renderKitReport() {
@@ -859,16 +877,18 @@ function renderKitReport() {
       </div>
       <div class="kitbar"><span class="src"><b>All kits combined</b> · quantities summed across kits · stock from ${esc(whTxt)}</span>${hint}</div>
       <div class="tbl"><table>
-        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th>${detHead()}${USABLE_TH}<th>Bin locations</th><th class="num" title="${ORDER_TIP}">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+        <thead><tr><th>Item code</th><th>Description</th><th class="num">Required</th><th>Used in (kit × qty)</th>${detHead()}${USABLE_TH}<th>Bin locations</th><th class="num" title="${ORDER_TIP}">To order</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
         <tbody>${vis.length ? vis.map(l => `<tr>
           ${codeCell(l)}
           <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
+          ${numCell(l.need)}
           <td class="locs-cell" title="${esc(l.p.kits.map(x => `${x.kit.name}: ${nf.format(x.need)}`).join("\n"))}"><div class="locs">${l.p.kits.map(x => `<span class="loc kitc">${esc(x.kit.name.split(" · ")[0])} · ${nf.format(x.need)}</span>`).join("")}</div></td>
-          ${numCell(l.need)}${detCells(l.p)}${numCell(l.p.avail)}
+          ${detCells(l.p)}${numCell(l.p.avail)}
           <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
           ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
         : `<tr><td colspan="${9 + DET_F.length}" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
       </table></div>`;
+    freezeCols(3); // Item code, Description, Required
     return;
   }
 
@@ -896,6 +916,7 @@ function renderKitReport() {
         ${orderCell(l.order)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
       : `<tr><td colspan="${(multi ? 11 : 10) + DET_F.length}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
     </table></div>`;
+  freezeCols(5); // #, Item code, Description, Qty / kit, Required
 }
 
 function kitCsv() {
