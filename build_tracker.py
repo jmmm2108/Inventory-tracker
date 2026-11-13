@@ -1,7 +1,7 @@
-"""Build Inventory Tracker.html from the Sage vItemQuantitiesbyBin export.
+"""Build the inventory tracker (index.html) from the Sage vItemQuantitiesbyBin export.
 
 Usage:  python build_tracker.py [path\\to\\vItemQuantitiesbyBin.xlsx]
-Writes "Inventory Tracker.html" next to this script, with the data embedded.
+Writes index.html (the tracker) next to this script, from template.html, with the data embedded.
 """
 import datetime
 import json
@@ -155,11 +155,11 @@ data = {
     "wh": wh, "bins": bins, "items": items, "rows": out, "det": det,
 }
 
-with open(os.path.join(HERE, "index.html"), encoding="utf-8") as f:
+with open(os.path.join(HERE, "template.html"), encoding="utf-8") as f:
     html = f.read()
 payload = json.dumps(data, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
 html = html.replace("/*__DATA__*/null", payload, 1)
-dest = os.path.join(HERE, "Inventory Tracker.html")
+dest = os.path.join(HERE, "index.html")
 with open(dest, "w", encoding="utf-8") as f:
     f.write(html)
 print(f"Left out {len(SITE_WH)} 'Site' warehouses: " + ", ".join(f"{c} {nm}" for c, nm in sorted(SITE_WH.items())))

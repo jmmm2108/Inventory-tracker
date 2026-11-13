@@ -1,0 +1,1070 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventory Tracker</title>
+<style>
+:root{
+  --bg:#f3f5f8; --card:#fff; --line:#d9e1ec; --line2:#e8edf4; --head:#eef3f9;
+  --ink:#1f2a37; --muted:#5b6778; --faint:#8a95a5;
+  --blue:#1d5ba8; --blue-d:#174a8a; --blue-l:#e8f0fb; --blue-t:#1d5ba8;
+  --amber:#b7832f; --red:#b42318; --green:#1a7f4b;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1800px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+
+/* search card */
+.search{padding:14px 16px 0}
+.sbar{display:flex;gap:10px;align-items:center}
+.sbar input{flex:1;min-width:0;height:48px;border:1px solid var(--line);border-radius:6px;padding:0 16px;background:#f8fafc;font-size:16px}
+.sbar input:focus,.f input:focus,.f select:focus{outline:2px solid #9cc0ee;outline-offset:0;border-color:var(--blue)}
+.btn{height:48px;padding:0 24px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--blue-d)}
+.btn.soft{background:var(--blue-l);border-color:#bcd0ea;color:var(--blue-t)}
+.btn.link{border:none;background:none;color:var(--blue-t);padding:0 12px}
+.btn.sm{height:38px;padding:0 16px}
+.filters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding:16px 0 4px;border-top:1px solid var(--line2);margin-top:14px}
+.filters.hidden,.adv.hidden{display:none}
+.f label{display:block;font-size:14px;color:var(--ink);margin-bottom:6px}
+.f input,.f select{width:100%;height:48px;border:1px solid var(--line);border-radius:6px;padding:0 12px;background:#fff}
+.f.span2{grid-column:span 2}
+.advtoggle{display:inline-flex;align-items:center;gap:6px;color:var(--blue-t);cursor:pointer;background:none;border:none;padding:10px 0;font-size:14px}
+.advtoggle .tri{font-size:10px;transition:transform .15s}
+.advtoggle.open .tri{transform:rotate(90deg)}
+.adv{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding-bottom:8px}
+.qv{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line2);margin:0 -16px;padding:12px 16px;background:#fbfcfe;border-radius:0 0 10px 10px}
+.qv .meta{color:var(--muted);font-size:13px}
+.qv .views{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.qv .lbl{font-size:12px;letter-spacing:.14em;font-weight:600;color:var(--muted);margin-right:6px}
+.chip{height:44px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.chip.on{border-color:var(--blue);background:var(--blue-l);color:var(--blue-t);font-weight:600;box-shadow:inset 0 0 0 1px var(--blue)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+
+/* kpis */
+.sec{display:flex;gap:16px;align-items:baseline;margin:12px 2px 6px;font-size:11px;color:var(--muted)}
+.sec b{letter-spacing:.14em;color:var(--ink);font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.kpi{display:grid;grid-template-columns:repeat(3,1fr);align-items:center;padding:12px 8px;text-align:center}
+.kpi .t{font-weight:700;font-size:17px}
+.kpi .n{font-size:26px;color:var(--blue-t);font-weight:500;line-height:1.1}
+.kpi small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.kpi button.n{background:none;border:none;cursor:pointer;padding:0}
+.kpi button.n:hover{text-decoration:underline}
+.note{font-size:11px;color:var(--muted);margin:6px 2px 14px}
+
+/* results */
+.tabs{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px 0;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.tablist{display:flex;gap:6px}
+.tab{background:none;border:none;padding:12px 10px 14px;cursor:pointer;color:var(--muted);font-size:15px;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--blue-t);border-bottom-color:var(--blue);font-weight:600}
+.tools{display:flex;gap:8px;padding-bottom:8px;flex-wrap:wrap}
+.count{display:flex;justify-content:space-between;gap:12px;padding:12px 22px;font-size:13px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.count b{font-weight:700}
+.count span{color:var(--muted)}
+.tbl{overflow:auto;max-height:70vh}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:1100px}
+th{position:sticky;top:0;z-index:1;background:var(--head);text-align:left;font-weight:500;padding:14px 12px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap}
+th .ar{color:var(--faint);font-size:10px;margin-left:6px}
+th.sorted .ar{color:var(--blue)}
+th.num,td.num{text-align:right}
+td{padding:14px 12px;border-bottom:1px solid var(--line2);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+tbody tr:hover td{background:#f7faff}
+td.zero{color:var(--faint)}
+td.neg{color:var(--red);font-weight:600}
+.lnk{color:var(--blue-t);cursor:pointer;background:none;border:none;padding:0;font:inherit;text-align:left}
+.lnk:hover{text-decoration:underline}
+.wh{display:inline-block;font-weight:600;font-variant-numeric:tabular-nums}
+.whn{color:var(--muted);font-size:12px;margin-left:6px}
+.bin{font-family:Consolas,"Cascadia Mono",monospace;font-size:13px;background:#f1f4f9;border:1px solid var(--line2);border-radius:4px;padding:1px 6px}
+.bin.none{color:var(--faint);font-style:italic;font-family:inherit;background:none;border:none;padding:0}
+.locs{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
+.loc{border:1px solid #c9d8ee;background:var(--blue-l);border-radius:12px;padding:1px 9px;font-size:12px;white-space:nowrap;color:#20406b}
+.loc b{font-weight:600}
+td.locs-cell{max-width:520px}
+.more{display:flex;justify-content:center;padding:14px}
+.empty{padding:48px;text-align:center;color:var(--muted)}
+.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.pill.in{background:#e6f4ec;color:var(--green)}
+.pill.out{background:#f1f3f6;color:var(--faint)}
+.pill.short{background:#fdecea;color:var(--red)}
+.pill.com{background:#fdf3e1;color:#8a5a12}
+tbody tr.click{cursor:pointer}
+
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:10;overflow:auto}
+.ov.show{display:flex}
+.modal{width:min(1200px,100%);background:#fff;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.mh{display:flex;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--line2)}
+.mh h2{margin:0;font-size:20px}
+.mh p{margin:4px 0 0;color:var(--muted)}
+.x{background:none;border:none;font-size:26px;line-height:1;cursor:pointer;color:var(--muted)}
+.mstats{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-bottom:1px solid var(--line2)}
+.mstats div{padding:14px;text-align:center;border-right:1px solid var(--line2)}
+.mstats div:last-child{border-right:none}
+.mstats b{display:block;font-size:22px;color:var(--blue-t);font-weight:500}
+.mstats small{color:var(--muted);font-size:11px}
+.mbody{padding:0 0 12px}
+.mbody table{min-width:0}
+.mbody th{cursor:default}
+.mfoot{display:flex;justify-content:space-between;align-items:center;padding:10px 22px;font-size:13px;color:var(--muted)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2a37;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.show{opacity:1}
+
+/* kit check */
+.hidden{display:none !important}
+.kit{padding:16px 22px 8px}
+.kitin{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.7fr);gap:16px}
+.drop{border:2px dashed #bcd0ea;border-radius:10px;background:#f8fbff;padding:18px;text-align:center;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:6px;min-height:150px}
+.drop.over{background:var(--blue-l);border-color:var(--blue)}
+.drop b{font-size:15px}
+.drop small{color:var(--muted)}
+.paste textarea{width:100%;height:110px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font:13px/1.4 Consolas,"Cascadia Mono",monospace;resize:vertical}
+.paste .row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.paste label{display:block;margin-bottom:6px}
+.kitopts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px;align-items:end}
+.kitsum{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--line);border-radius:10px;margin:16px 0 4px;overflow:hidden}
+.kitsum div{padding:12px 8px;text-align:center;border-right:1px solid var(--line2)}
+.kitsum div:last-child{border-right:none}
+.kitsum b{display:block;font-size:24px;font-weight:500;color:var(--blue-t);line-height:1.15}
+.kitsum b.bad{color:var(--red)} .kitsum b.good{color:var(--green)}
+.kitsum small{color:var(--muted);font-size:11px}
+.kitbar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;font-size:13px;flex-wrap:wrap}
+.kitbar .src{color:var(--muted)}
+.loc.more{background:#fff;cursor:pointer;color:var(--blue-t)}
+.badge{display:inline-block;min-width:22px;padding:1px 7px;border-radius:10px;background:#fdecea;color:var(--red);font-size:12px;font-weight:700;margin-left:4px}
+.badge:empty{display:none}
+.badge.eu{background:#f4f1fb;color:#3f2f6b}
+.bin.eu{font-family:inherit;background:#f4f1fb;border-color:#d9cfee;color:#3f2f6b;font-size:12px;font-weight:600}
+.loc.sug{background:#e6f4ec;border-color:#bfe3cd;color:#14532d}
+.loc.kitc{background:#f4f1fb;border-color:#d9cfee;color:#3f2f6b}
+.kl{margin-top:16px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.kl table{min-width:0}
+.kl th{cursor:default;padding:10px 12px}
+.kl td{padding:8px 12px}
+.kl input{width:80px;height:34px;border:1px solid var(--line);border-radius:6px;padding:0 8px;text-align:right}
+.kl .acts{white-space:nowrap;text-align:right}
+.kl .acts button{background:none;border:1px solid var(--line);border-radius:6px;width:32px;height:32px;cursor:pointer;color:var(--muted)}
+.kl .acts button:hover{color:var(--blue-t);border-color:var(--blue)}
+.kl .acts button:disabled{opacity:.35;cursor:default}
+.kl tr.sel td{background:var(--blue-l)}
+.klhead{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fbfcfe;border-bottom:1px solid var(--line2);font-size:13px;color:var(--muted);gap:8px;flex-wrap:wrap}
+.klhead b{color:var(--ink)}
+td.short{color:var(--red);font-weight:700}
+.pill.nf{background:#eef0f4;color:#4b5565}
+.pill.part{background:#fdf3e1;color:#8a5a12}
+
+@media (max-width:1100px){
+  .kitin{grid-template-columns:1fr}
+  .kitopts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kitsum{grid-template-columns:repeat(3,1fr)}
+  .filters,.adv{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .f.span2{grid-column:span 2}
+  .kpis{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .wrap{padding:16px}
+  .sbar{flex-wrap:wrap}
+  .sbar input{flex-basis:100%}
+  .filters,.adv{grid-template-columns:1fr}
+  .f.span2{grid-column:auto}
+  .mstats{grid-template-columns:repeat(2,1fr)}
+}
+@media print{.search,.tools,.more,.sec,.kpis,.note,.kitin,.kitopts,.tablist{display:none !important}.tbl{max-height:none}.card{border:none;box-shadow:none}td{white-space:normal}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="card search">
+    <div class="sbar">
+      <input id="q" type="search" placeholder="Search parts, descriptions, bins, warehouses…" autocomplete="off">
+      <button class="btn primary" id="go">Search</button>
+      <button class="btn soft" id="ftoggle">Filters ⌃</button>
+      <button class="btn link" id="clear">Clear</button>
+    </div>
+
+    <div class="filters" id="filters">
+      <div class="f">
+        <label for="wh">Warehouse</label>
+        <select id="wh"></select>
+      </div>
+      <div class="f">
+        <label for="bin">Bin location</label>
+        <input id="bin" list="binlist" placeholder="All bins" autocomplete="off">
+        <datalist id="binlist"></datalist>
+      </div>
+      <div class="f">
+        <label for="item">Item code</label>
+        <input id="item" placeholder="All items" autocomplete="off">
+      </div>
+      <div class="f">
+        <label for="pstatus">Part status</label>
+        <select id="pstatus">
+          <option value="">All statuses</option>
+          <option value="need">Need to order</option>
+          <option value="committed">Committed</option>
+          <option value="instock">In stock</option>
+          <option value="out">Out of stock</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="status">Bin quantity</label>
+        <select id="status">
+          <option value="all">All bin records</option>
+          <option value="instock">On hand, PO or SO &gt; 0</option>
+          <option value="zero">Zero on hand</option>
+          <option value="committed">Has committed qty</option>
+          <option value="short">Available &lt; 0</option>
+        </select>
+      </div>
+    </div>
+    <button class="advtoggle" id="advtoggle"><span class="tri">▶</span> Advanced filters</button>
+    <div class="adv hidden" id="adv">
+      <div class="f">
+        <label for="minqty">Min. on hand</label>
+        <input id="minqty" type="number" step="1" placeholder="Any">
+      </div>
+      <div class="f">
+        <label for="maxqty">Max. on hand</label>
+        <input id="maxqty" type="number" step="1" placeholder="Any">
+      </div>
+      <div class="f">
+        <label for="nobin">Bin assignment</label>
+        <select id="nobin">
+          <option value="">Any</option>
+          <option value="has">In a warehouse bin</option>
+          <option value="nobinloc">No bin location (0-00-0-0 or blank)</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="multi">Part spread</label>
+        <select id="multi">
+          <option value="">Any</option>
+          <option value="multi">Stocked in 2+ warehouses</option>
+        </select>
+      </div>
+      <div class="f span2">
+        <label for="file">Load a newer Sage export (.xlsx)</label>
+        <input id="file" type="file" accept=".xlsx,.xls,.csv" style="padding:10px 12px">
+      </div>
+    </div>
+
+    <div class="qv">
+      <div class="meta" id="meta"></div>
+      <div class="views">
+        <span class="lbl">QUICK VIEWS</span>
+        <button class="chip" data-qv="all">All parts</button>
+        <button class="chip" data-qv="instock">In stock</button>
+        <button class="chip" data-qv="committed">Committed</button>
+        <button class="chip" data-qv="need"><span class="dot"></span>Need to order</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="sec"><b>CURRENT VIEW</b><span id="secnote">Totals reflect the active filters · click a count to open that tab</span></div>
+  <div class="kpis">
+    <div class="card kpi">
+      <div><div class="t">Locations</div><small>Item × bin records</small></div>
+      <div><div class="n" id="k-loc">0</div><small>Bin records</small></div>
+      <div><button class="n" data-goto="part" id="k-part">0</button><small>Distinct parts</small></div>
+    </div>
+    <div class="card kpi">
+      <div><div class="t">Quantity</div><small>Units across bins</small></div>
+      <div><div class="n" id="k-qoh">0</div><small>On hand</small></div>
+      <div><div class="n" id="k-com">0</div><small>Committed</small></div>
+    </div>
+    <div class="card kpi">
+      <div><div class="t">Availability</div><small>On hand − committed</small></div>
+      <div><div class="n" id="k-avail">0</div><small>Available</small></div>
+      <div><button class="n" data-goto="wh" id="k-wh">0</button><small>Warehouses</small></div>
+    </div>
+  </div>
+  <div class="note">Bin “0-00-0-0” means the part has been received by the end user — it still counts as on hand in Sage but is not in a warehouse, so Kit check never uses it.</div>
+
+  <section class="card">
+    <div class="tabs">
+      <div class="tablist">
+        <button class="tab on" data-tab="part">By part</button>
+        <button class="tab" data-tab="wh">Warehouses</button>
+        <button class="tab" data-tab="kit">Kit check</button>
+      </div>
+      <div class="tools">
+        <button class="btn sm link hidden" id="kitprint">Print</button>
+        <button class="btn sm link" id="saveview">Save view</button>
+        <button class="btn sm soft" id="csv">Export CSV</button>
+      </div>
+    </div>
+    <div id="mainview">
+      <div class="count"><div id="countl"></div><span id="countr"></span></div>
+      <div class="tbl"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+      <div class="more" id="more"></div>
+    </div>
+
+    <div id="kitview" class="kit hidden">
+      <div class="kitin">
+        <label class="drop" id="kitdrop">
+          <b>Upload kit lists</b>
+          <small>CSV or Excel with a <i>Retiina PN</i> or <i>Item code</i> column and quantity columns (<i>System / Attrition / Spares Qty</i>).<br>Select or drop <b>several files at once</b> — each file, and each workbook tab with a parts table, becomes one kit.</small>
+          <input type="file" id="kitfile" accept=".csv,.txt,.xlsx,.xls" multiple hidden>
+        </label>
+        <div class="paste">
+          <label for="kitpaste">…or paste item codes and quantities (copy two columns from Excel)</label>
+          <textarea id="kitpaste" placeholder="1003-10005	4&#10;R-005213	1&#10;A4-12FL-1	10"></textarea>
+          <div class="row">
+            <button class="btn sm link" id="kittpl">Download template</button>
+            <button class="btn sm primary" id="kitgo">Add pasted list as a kit</button>
+          </div>
+        </div>
+      </div>
+      <div id="kitlist"></div>
+      <div class="kitopts">
+        <div class="f"><label for="kitrep">Report</label><select id="kitrep"></select></div>
+        <div class="f"><label for="kitwh">Pull stock from</label><select id="kitwh"></select></div>
+        <div class="f"><label for="kitshow">Show</label>
+          <select id="kitshow"><option value="">All lines</option><option value="short">Only lines that need ordering</option><option value="ok">Only fully covered lines</option></select></div>
+        <div class="f"><label for="kitbasis">Available qty means</label>
+          <select id="kitbasis"><option value="avail">On hand − committed</option><option value="qoh">On hand (ignore commitments)</option></select></div>
+      </div>
+      <div id="kitout"></div>
+    </div>
+  </section>
+</div>
+
+<div class="ov" id="ov">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mh"><div><h2 id="mt"></h2><p id="md"></p></div><button class="x" id="mx" aria-label="Close">×</button></div>
+    <div class="mstats" id="ms"></div>
+    <div class="mbody tbl" style="max-height:60vh"><table><thead id="mhead"></thead><tbody id="mb"></tbody></table></div>
+    <div class="mfoot"><label><input type="checkbox" id="mzero"> Show zero-quantity bins</label><span id="mnote"></span></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const RAW = /*__DATA__*/null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nf = new Intl.NumberFormat("en-US", {maximumFractionDigits: 2});
+const nf0 = new Intl.NumberFormat("en-US", {maximumFractionDigits: 0});
+const money = v => "$" + new Intl.NumberFormat("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(v || 0);
+const moneyShort = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : v >= 1e4 ? "$" + (v / 1e3).toFixed(1) + "k" : money(v);
+const END_USER_BIN = "0-00-0-0"; // bin used in Sage for parts already received by the end user (not in a warehouse)
+const NO_BIN = new Set(["", END_USER_BIN]); // anything that is not a real warehouse bin
+
+let ROWS = [], WH = new Map(), BY_ITEM = new Map(), ITEM_KEY = new Map(), META = {};
+// Item warehouse detail (Sage vItemWarehouseDetail): item -> warehouse -> open quantities. A part/warehouse with no bin record comes in as a "No bin" record (bin "").
+let DET = new Map(), DET_META = null;
+// Same columns and order as the Sage Item Inquiry "Quantities" grid.
+const DET_F = [["qoh", "On Hand"], ["po", "On PO"], ["so", "On SO"], ["bo", "On Bk Ord"], ["com", "Committed"], ["wo", "On W/T"],
+  ["rwo", "Req for W/T"], ["avail", "Available"], ["ship", "In Shipping"], ["ohls", "On Hand Less Ship"]];
+const detZero = () => Object.fromEntries(DET_F.map(([k]) => [k, 0]));
+function detSum(item, wh) {
+  const t = detZero(), m = DET.get(item);
+  if (m) for (const [w, d] of m) if (!wh || w === wh) for (const [k] of DET_F) t[k] += d[k];
+  return t;
+}
+// Open activity in the item warehouse detail: on PO, SO, back order, committed or work ticket.
+// Lets the "On hand, PO or SO > 0" filter keep a warehouse row with nothing on hand but something on order.
+const OPEN_F = ["po", "so", "bo", "com", "wo", "rwo"];
+const hasOpen = (item, wh) => { const d = DET.get(item)?.get(wh); return !!d && OPEN_F.some(k => d[k] > 0); };
+const PAGE = 200;
+const DEFAULTS = {q: "", wh: "", bin: "", item: "", pstatus: "", status: "instock", minqty: "", maxqty: "", nobin: "", multi: ""};
+const S = {...DEFAULTS, tab: "part", sort: {}, shown: PAGE};
+// Quick views: which filter values each chip sets.
+const QV = {
+  all: {status: "all", pstatus: ""},
+  instock: {status: "instock", pstatus: ""},
+  committed: {status: "all", pstatus: "committed"},
+  need: {status: "all", pstatus: "need"},
+};
+
+// Service / non-stock item codes that are never physical inventory — removed from every tab, total and kit check.
+// Exact item codes only (e.g. "ENGINEERING CHUTE FROM INDY" is a real part and stays). Add codes here as needed.
+const SERVICE_ITEMS = /^(FREIGHT|TRAVEL|LABOR(-.*)?|ENGINEERING( & MANAGEMENT)?|INSTALLATION( \/ .*|-\d+)?|REPACKAGING SERVICE|TAX( CREDIT)?|FEE|PACKAGING MATERIAL FEE|DISCOUNT|MATERIALS|PILS \d+ (MATERIAL|LABOR)|SUPPORT|1003-42010)$/i;
+let HIDDEN = {items: 0, rows: 0};
+
+function load(raw) {
+  META = raw;
+  WH = new Map(raw.wh.map(([c, n]) => [c, n || ""]));
+  if (raw.det) { // a newer bin export loaded in the browser has no detail, so the embedded detail is kept
+    DET = new Map(); DET_META = {source: raw.det.source, asof: raw.det.asof};
+    for (const d of raw.det.rows) {
+      const item = raw.items[d[0]][0], wc = raw.wh[d[1]][0];
+      let m = DET.get(item); if (!m) DET.set(item, m = new Map());
+      m.set(wc, Object.fromEntries(DET_F.map(([k], i) => [k, +d[i + 2] || 0])));
+    }
+  }
+  const hiddenItems = new Set();
+  raw = {...raw, rows: raw.rows.filter(r => { const code = raw.items[r[2]][0]; if (SERVICE_ITEMS.test(code)) { hiddenItems.add(code); return false; } return true; })};
+  HIDDEN = {items: hiddenItems.size, rows: META.rows.length - raw.rows.length, codes: [...hiddenItems].sort()};
+  ROWS = raw.rows.map(r => {
+    const [wc] = raw.wh[r[0]], bin = raw.bins[r[1]], [item, desc] = raw.items[r[2]];
+    const qoh = +r[3] || 0, com = +r[4] || 0, avail = +r[5] || 0, cost = +r[6] || 0;
+    return {wh: wc, whn: WH.get(wc), bin, item, desc, qoh, com, avail, cost, value: qoh * cost,
+      s: (wc + " " + WH.get(wc) + " " + bin + " " + item + " " + desc).toLowerCase()};
+  });
+  BY_ITEM = new Map();
+  for (const r of ROWS) {
+    let a = BY_ITEM.get(r.item); if (!a) BY_ITEM.set(r.item, a = []); a.push(r);
+  }
+  for (const [, a] of BY_ITEM) a.whStock = new Set(a.filter(r => r.qoh > 0).map(r => r.wh)).size;
+  ITEM_KEY = new Map([...BY_ITEM.keys()].map(k => [k.toLowerCase(), k])); // case-insensitive lookup for kit lists
+  buildWhSelect(); buildBinList();
+  $("meta").textContent = `${raw.source} · ${raw.asof} · ${nf0.format(ROWS.length)} bin records · ${nf0.format(BY_ITEM.size)} parts` +
+    (HIDDEN.items ? ` · ${HIDDEN.items} service items hidden` : "") +
+    (DET_META ? ` · ${DET_META.source} · ${DET_META.asof}` : "");
+  $("meta").title = HIDDEN.items ? `Hidden service / non-stock items (${HIDDEN.rows} records):\n${HIDDEN.codes.join("\n")}` : "";
+}
+
+function whLabel(c) { const n = WH.get(c); return n ? `${c} — ${n}` : c; }
+function buildWhSelect() {
+  const stock = new Map();
+  for (const r of ROWS) if (r.qoh > 0) stock.set(r.wh, (stock.get(r.wh) || 0) + 1);
+  const codes = [...WH.keys()].sort();
+  $("wh").innerHTML = `<option value="">All warehouses (${codes.length})</option>` +
+    codes.map(c => `<option value="${esc(c)}">${esc(whLabel(c))}  ·  ${nf0.format(stock.get(c) || 0)} in stock</option>`).join("");
+  $("wh").value = S.wh;
+  const kw = $("kitwh").value;
+  $("kitwh").innerHTML = `<option value="">All warehouses</option>` + codes.map(c => `<option value="${esc(c)}">${esc(whLabel(c))}</option>`).join("");
+  $("kitwh").value = WH.has(kw) ? kw : "";
+}
+function buildBinList() {
+  const set = new Set(ROWS.filter(r => !S.wh || r.wh === S.wh).map(r => r.bin).filter(b => b));
+  $("binlist").innerHTML = [...set].sort().slice(0, 2000).map(b => `<option value="${esc(b)}">`).join("");
+}
+
+/* ---------- filtering ---------- */
+// loose = only the "which records" filters (warehouse, search, item); used by the No bin tab.
+function filtered(loose = false) {
+  const toks = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const item = S.item.trim().toLowerCase();
+  if (loose) return ROWS.filter(r => (!S.wh || r.wh === S.wh) && (!item || r.item.toLowerCase().includes(item)) && toks.every(t => r.s.includes(t)));
+  const bin = S.bin.trim().toLowerCase();
+  const minq = S.minqty === "" ? null : +S.minqty, maxq = S.maxqty === "" ? null : +S.maxqty;
+  const rows = ROWS.filter(r => {
+    if (S.wh && r.wh !== S.wh) return false;
+    if (bin && !r.bin.toLowerCase().includes(bin)) return false;
+    if (item && !r.item.toLowerCase().includes(item)) return false;
+    switch (S.status) {
+      case "instock": if (r.qoh <= 0 && !hasOpen(r.item, r.wh)) return false; break;
+      case "zero": if (r.qoh !== 0) return false; break;
+      case "committed": if (r.com <= 0) return false; break;
+      case "short": if (r.avail >= 0) return false; break;
+    }
+    if (minq !== null && r.qoh < minq) return false;
+    if (maxq !== null && r.qoh > maxq) return false;
+    if (S.nobin === "has" && NO_BIN.has(r.bin)) return false;
+    if (S.nobin === "nobinloc" && !NO_BIN.has(r.bin)) return false;
+    if (S.multi === "multi" && BY_ITEM.get(r.item).whStock < 2) return false;
+    for (const t of toks) if (!r.s.includes(t)) return false;
+    return true;
+  });
+  if (!S.pstatus) return rows;
+  // Part status is judged on each part's totals within the filtered rows.
+  const tot = new Map();
+  for (const r of rows) {
+    const t = tot.get(r.item) || {qoh: 0, com: 0, avail: 0};
+    t.qoh += r.qoh; t.com += r.com; t.avail += r.avail; tot.set(r.item, t);
+  }
+  return rows.filter(r => partStatus(tot.get(r.item)) === S.pstatus);
+}
+
+function group(rows, keyFn, init) {
+  const m = new Map();
+  for (const r of rows) {
+    const k = keyFn(r); let g = m.get(k);
+    if (!g) m.set(k, g = Object.assign({rows: [], qoh: 0, com: 0, avail: 0, value: 0}, init(r)));
+    g.rows.push(r); g.qoh += r.qoh; g.com += r.com; g.avail += r.avail; g.value += r.value;
+  }
+  return [...m.values()];
+}
+
+/* ---------- tab definitions ---------- */
+const binCell = b => b === END_USER_BIN ? `<span class="bin none" title="No bin location — 0-00-0-0 (received by end user)">0-00-0-0</span>`
+  : !b ? `<span class="bin none">No bin</span>` : `<span class="bin">${esc(b)}</span>`;
+const whCell = (c, n) => `<span class="wh">${esc(c)}</span>${n ? `<span class="whn">${esc(n)}</span>` : ""}`;
+const numCell = (v, f = nf.format) => `<td class="num${v === 0 ? " zero" : v < 0 ? " neg" : ""}">${f(v)}</td>`;
+// Part status from the part's totals (Available = On hand − Committed):
+//   need      – committed is more than on hand (available < 0)
+//   committed – some qty committed, on hand still covers it
+//   instock   – on hand, nothing committed
+//   out       – nothing on hand and nothing committed
+const PSTATUS = {
+  need: ["Need to order", "short", 0], committed: ["Committed", "com", 1],
+  instock: ["In stock", "in", 2], out: ["Out of stock", "out", 3],
+};
+const partStatus = t => t.avail < 0 ? "need" : t.com > 0 ? "committed" : t.qoh > 0 ? "instock" : "out";
+const statusPill = k => `<span class="pill ${PSTATUS[k][1]}">${PSTATUS[k][0]}</span>`;
+
+const TABS = {
+  // One row per part + warehouse, laid out like the Sage Item Inquiry "Quantities" grid (numbers from vItemWarehouseDetail),
+  // plus the bin locations vItemQuantitiesbyBin has for the same warehouse + item code.
+  part: {
+    noun: "part / warehouse rows", def: {key: "item", dir: 1},
+    cols: [
+      ["item", "Item code", g => `<td title="${esc(g.item)}"><button class="lnk" data-item="${esc(g.item)}">${esc(g.item)}</button></td>`, g => g.item + "|" + g.wh],
+      ["desc", "Description", g => `<td title="${esc(g.desc)}">${esc(g.desc)}</td>`, g => g.desc],
+      ["wh", "Whse", g => `<td><span class="wh">${esc(g.wh)}</span></td>`, g => g.wh],
+      ["whn", "Warehouse", g => `<td title="${esc(g.whn || "")}">${esc(g.whn || "—")}</td>`, g => g.whn || ""],
+      ...DET_F.map(([k, l]) => [k, l, g => numCell(g.det[k]), g => g.det[k], 1]),
+      ["bins", "Bin location", g => `<td class="locs-cell" title="${esc(g.bins.map(r => `${r.bin || "No bin"}: ${nf.format(r.qoh)}`).join("\n"))}">${g.bins.length ? g.bins.map(r => binCell(r.bin)).join(" ") : binCell("")}</td>`, g => g.bins.map(r => r.bin).join(" ")],
+      ["st", "Status", g => `<td>${statusPill(g.st)}</td>`, g => PSTATUS[g.st][2]],
+    ],
+    data: rows => group(rows, r => r.item + "|" + r.wh, r => ({item: r.item, desc: r.desc, wh: r.wh, whn: r.whn})).map(g => {
+      // Bins for this warehouse + item from the bin report (not only the filtered ones): bins holding stock first.
+      const all = (BY_ITEM.get(g.item) || []).filter(r => r.wh === g.wh && r.bin).sort((a, b) => b.qoh - a.qoh);
+      g.bins = all.some(r => r.qoh !== 0) ? all.filter(r => r.qoh !== 0) : all;
+      // no detail row (e.g. a bin export loaded without one): fall back to the bin report sums
+      const d = DET.get(g.item)?.get(g.wh);
+      g.det = d || {...detZero(), qoh: g.qoh, com: g.com, avail: g.avail, ohls: g.qoh};
+      g.st = partStatus(g.det); return g;
+    }),
+  },
+  wh: {
+    noun: "warehouses", def: {key: "wh", dir: 1}, click: "wh",
+    cols: [
+      ["wh", "Warehouse", g => `<td><span class="wh">${esc(g.wh)}</span></td>`, g => g.wh],
+      ["whn", "Name", g => `<td>${esc(g.whn || "—")}</td>`, g => g.whn],
+      ["nbin", "Bins", g => numCell(g.nbin, nf0.format), g => g.nbin, 1],
+      ["nitem", "Parts", g => numCell(g.nitem, nf0.format), g => g.nitem, 1],
+      ["nrec", "Bin records", g => numCell(g.rows.length, nf0.format), g => g.rows.length, 1],
+      ["qoh", "On hand", g => numCell(g.qoh), g => g.qoh, 1],
+      ["com", "Committed", g => numCell(g.com), g => g.com, 1],
+    ],
+    data: rows => group(rows, r => r.wh, r => ({wh: r.wh, whn: r.whn})).map(g => {
+      g.nbin = new Set(g.rows.map(r => r.bin)).size; g.nitem = new Set(g.rows.map(r => r.item)).size; return g;
+    }),
+  },
+};
+
+/* ---------- render ---------- */
+let CURRENT = [], CUR_ROWS = [];
+let LOOSE_ROWS = [];
+function render() {
+  CUR_ROWS = filtered();
+  LOOSE_ROWS = filtered(true);
+  renderKpis();
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+  const qv = Object.keys(QV).find(k => Object.entries(QV[k]).every(([f, v]) => S[f] === v)) || "";
+  document.querySelectorAll("[data-qv]").forEach(b => b.classList.toggle("on", b.dataset.qv === qv));
+  const isKit = S.tab === "kit";
+  $("mainview").classList.toggle("hidden", isKit);
+  $("kitview").classList.toggle("hidden", !isKit);
+  $("kitprint").classList.toggle("hidden", !isKit);
+  $("saveview").classList.toggle("hidden", isKit);
+  if (isKit) return renderKit();
+
+  const T = TABS[S.tab], sort = S.sort[S.tab] || T.def;
+  const col = T.cols.find(c => c[0] === sort.key) || T.cols[0];
+  const data = T.data(T.allRows ? LOOSE_ROWS : CUR_ROWS);
+  const get = col[3];
+  data.sort((a, b) => {
+    const x = get(a), y = get(b);
+    return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), undefined, {numeric: true})) * sort.dir;
+  });
+  CURRENT = data;
+
+  $("thead").innerHTML = "<tr>" + T.cols.map(c =>
+    `<th data-sort="${c[0]}" class="${c[4] ? "num " : ""}${c[0] === sort.key ? "sorted" : ""}">${esc(c[1])}<span class="ar">${c[0] === sort.key ? (sort.dir > 0 ? "▲" : "▼") : "⇅"}</span></th>`).join("") + "</tr>";
+  const shown = data.slice(0, S.shown);
+  $("tbody").innerHTML = shown.length ? shown.map((d, i) =>
+    `<tr${T.click ? ` class="click" data-i="${i}"` : ""}>${T.cols.map(c => c[2](d)).join("")}</tr>`).join("")
+    : `<tr><td colspan="${T.cols.length}" class="empty">No inventory matches these filters.</td></tr>`;
+  $("more").innerHTML = data.length > S.shown
+    ? `<button class="btn sm" id="showmore">Show ${nf0.format(Math.min(PAGE * 5, data.length - S.shown))} more · ${nf0.format(S.shown)} of ${nf0.format(data.length)} shown</button>` : "";
+
+  $("countl").innerHTML = `<b>${nf0.format(data.length)} ${T.noun}</b>` + ` · <b>${nf0.format(CUR_ROWS.length)} matching bin records</b>` +
+    (S.wh ? ` · Warehouse <b>${esc(whLabel(S.wh))}</b>` : "");
+  $("countr").textContent = S.tab === "part" ? ""
+    : "Click a warehouse to see its parts.";
+}
+
+function renderKpis() {
+  let qoh = 0, com = 0, avail = 0; const items = new Set(), whs = new Set();
+  for (const r of CUR_ROWS) { qoh += r.qoh; com += r.com; avail += r.avail; items.add(r.item); whs.add(r.wh); }
+  $("k-loc").textContent = nf0.format(CUR_ROWS.length);
+  $("k-part").textContent = nf0.format(items.size);
+  $("k-qoh").textContent = nf0.format(qoh);
+  $("k-com").textContent = nf0.format(com);
+  $("k-avail").textContent = nf0.format(avail);
+  $("k-wh").textContent = nf0.format(whs.size);
+}
+
+/* ---------- kit check ---------- */
+// KITS = [{id, name, source, title, n, lines: [{code, qty, desc, alt}], …}] — one line per distinct item code per kit.
+// Stock is shared: kits are served in list order (top = first priority), so a part is never counted twice.
+let KITS = [], KIT_SEQ = 0, KIT_CALC = null, KIT_ROWS = [];
+
+function parseDelimited(text) {
+  const first = text.split(/\r?\n/).find(l => l.trim()) || "";
+  const delim = ["\t", ",", ";", "|"].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"' && cell === "") q = true;
+    else if (c === delim) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim()));
+}
+
+// Finds the item / quantity / description columns from a header row; falls back to "column A = item, column B = qty".
+// Kit sheets look like: title rows (kit number, kit name) → header row → part lines → blank row → other tables (Revision…).
+// Item column, in priority order: "Retiina PN", "Item code", other item/part-number headers. Alt / Mfg / vendor PNs are never used.
+// Qty per kit = sum of every quantity column (e.g. System Qty + Attrition Qty + Spares Qty).
+const ITEM_HEADERS = [/retiina\s*(pn|p\/n|part)/i, /^item\s*code$/i, /item\s*(code|no\.?|number|#)/i, /^item$/i, /^(pn|p\/n|part\s*(number|no\.?|#)?|sku|component)$/i];
+const NOT_ITEM = /alt|mfg|manuf|vendor|supplier|desc|qty|quantity|cust/i;
+const QTY_HEADER = /qty|quantity|required/i;
+
+function rowsToKit(rows, source) {
+  const s = v => String(v ?? "").replace(/\s+/g, " ").trim();
+  const num = v => { const t = s(v).replace(/,/g, ""); if (!/^-?\d*\.?\d+$/.test(t)) return NaN; return parseFloat(t); };
+  let hi = -1, ic = 0, qcs = [], dc = -1, altc = -1;
+  for (let i = 0; i < Math.min(rows.length, 30) && hi < 0; i++) {
+    const r = (rows[i] || []).map(s);
+    for (const re of ITEM_HEADERS) {
+      const k = r.findIndex(c => re.test(c) && !NOT_ITEM.test(c));
+      if (k >= 0) { hi = i; ic = k; break; }
+    }
+    if (hi >= 0) {
+      qcs = r.map((c, k) => QTY_HEADER.test(c) && !/alt/i.test(c) ? k : -1).filter(k => k >= 0);
+      dc = r.findIndex(c => /desc/i.test(c));
+      altc = r.findIndex(c => /alt/i.test(c) && /retiina|item/i.test(c));
+    }
+  }
+  let title = "", qtyNames = [];
+  if (hi >= 0) {
+    title = rows.slice(0, hi).flat().map(s).filter(Boolean).join(" · ");
+    qtyNames = qcs.map(k => s(rows[hi][k]));
+  } else if (rows.length) { // no header row: column A = item, column B = qty (if numeric)
+    ic = 0; qcs = (rows[0] || []).length > 1 && !isNaN(num(rows[0][1])) ? [1] : [];
+  }
+  const map = new Map(); let skipped = 0, started = false;
+  for (const r of rows.slice(hi + 1)) {
+    const cells = (r || []).map(s);
+    if (!cells.some(Boolean)) { if (started && hi >= 0) break; continue; } // blank row ends the parts table
+    const code = cells[ic]; if (!code) continue;
+    let qty = 1;
+    if (qcs.length) {
+      const vals = qcs.map(k => num(cells[k])).filter(v => !isNaN(v));
+      if (!vals.length) { skipped++; continue; } // e.g. a "Revision" table row
+      qty = vals.reduce((a, b) => a + b, 0);
+    }
+    started = true;
+    const key = code.toLowerCase(), line = map.get(key);
+    if (line) line.qty += qty;
+    else map.set(key, {code, qty, desc: dc >= 0 ? cells[dc] : "", alt: altc >= 0 ? cells[altc] : ""});
+  }
+  if (!map.size) throw new Error("No parts found. The sheet needs a “Retiina PN” or “Item code” column and a quantity column.");
+  return {source, title, lines: [...map.values()], skipped, noQtyCol: !qcs.length, itemCol: hi >= 0 ? s(rows[hi][ic]) : "column A", qtyNames};
+}
+
+// Returns an array of kits: one per workbook tab that has a recognised parts header
+// (or the first readable tab if none has a header). A CSV is always one kit.
+async function readKitFile(file) {
+  if (/\.(csv|txt)$/i.test(file.name)) return [rowsToKit(parseDelimited(await file.text()), file.name)];
+  await loadXlsxLib();
+  const wb = XLSX.read(await file.arrayBuffer(), {type: "array"});
+  const kits = []; let fallback, firstErr;
+  for (const name of wb.SheetNames) {
+    try {
+      const src = wb.SheetNames.length > 1 ? `${file.name} (tab “${name}”)` : file.name;
+      const kit = rowsToKit(XLSX.utils.sheet_to_json(wb.Sheets[name], {header: 1, defval: "", raw: false, blankrows: true}), src);
+      if (kit.itemCol !== "column A") kits.push(kit); else fallback = fallback || kit;
+    } catch (e) { firstErr = firstErr || e; }
+  }
+  if (kits.length) return kits;
+  if (fallback) return [fallback];
+  throw firstErr;
+}
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; sc.onload = ok; sc.onerror = () => no(new Error("Could not load the Excel reader (needs internet). Save the kit as CSV instead.")); document.head.appendChild(sc); });
+}
+function addKits(kits) {
+  for (const k of kits) {
+    k.id = ++KIT_SEQ; k.n = 1;
+    k.name = k.title || k.source.replace(/\.(csv|txt|xlsx?|xls)\b/i, "");
+    KITS.push(k);
+  }
+  const skipped = kits.reduce((a, k) => a + k.skipped, 0);
+  toast(`Added ${kits.length} kit${kits.length === 1 ? "" : "s"} (${kits.reduce((a, k) => a + k.lines.length, 0)} parts)${skipped ? ` · ${skipped} rows skipped (no quantity)` : ""}.`);
+  if (kits.length === 1 && KITS.length > 1) $("kitrep").dataset.want = String(kits[0].id);
+  S.tab = "kit"; render();
+}
+async function addKitFiles(files) {
+  const added = [], errs = [];
+  for (const f of files) {
+    try { added.push(...await readKitFile(f)); } catch (err) { errs.push(`${f.name}: ${err.message}`); }
+  }
+  if (added.length) addKits(added);
+  if (errs.length) setTimeout(() => toast(errs.join("  ·  ")), added.length ? 2300 : 0);
+}
+
+const KSTATUS = {ok: ["Available", "in", 3], partial: ["Partial — order rest", "part", 1], order: ["Need to order", "short", 0], nf: ["Not in inventory", "nf", 2]};
+const kitStatus = (found, order, fromStock) => !found ? "nf" : order === 0 ? "ok" : fromStock > 0 ? "partial" : "order";
+
+function computeKits() {
+  const wh = $("kitwh").value, basis = $("kitbasis").value;
+  const binQty = r => basis === "qoh" ? r.qoh : r.avail;
+  const parts = new Map(); // resolved code → stock info (shared by every kit)
+  const resolve = l => {
+    let key = ITEM_KEY.get(l.code.toLowerCase()), viaAlt = false;
+    if (!key && l.alt && ITEM_KEY.has(l.alt.toLowerCase())) { key = ITEM_KEY.get(l.alt.toLowerCase()); viaAlt = true; } // fall back to Alt Retiina PN
+    const code = key || l.code;
+    if (!parts.has(code)) {
+      const all = key ? BY_ITEM.get(key) : [];
+      const rows = all.filter(r => (!wh || r.wh === wh) && r.bin !== END_USER_BIN); // never count stock already at the end user
+      const qoh = rows.reduce((a, r) => a + r.qoh, 0), com = rows.reduce((a, r) => a + r.com, 0);
+      const avail = Math.max(0, basis === "qoh" ? qoh : qoh - com);
+      parts.set(code, {code, found: !!key, desc: all[0]?.desc || "", rows, qoh, com, avail, left: avail,
+        bins: rows.filter(r => binQty(r) > 0).sort((a, b) => binQty(b) - binQty(a)),
+        cost: (all.find(r => r.cost > 0) || {}).cost || 0, need: 0, kits: [], po: key ? detSum(key, wh).po : 0});
+    }
+    return {p: parts.get(code), viaAlt};
+  };
+  const kits = KITS.map(k => {
+    const n = Math.max(0, +k.n || 0);
+    const lines = k.lines.map((l, i) => {
+      const {p, viaAlt} = resolve(l);
+      const need = l.qty * n, take = Math.min(need, p.left);
+      p.left -= take; p.need += need; p.kits.push({kit: k, need});
+      if (!p.desc) p.desc = l.desc;
+      const order = need - take;
+      return {kit: k, n: i + 1, p, code: p.code, orig: l.code, viaAlt, desc: l.desc || p.desc, per: l.qty, need, take, order,
+        ocost: order * p.cost, st: kitStatus(p.found, order, take), alone: l.qty > 0 ? Math.floor(p.avail / l.qty) : Infinity};
+    });
+    const short = lines.filter(l => l.order > 0);
+    return {k, n, lines, short: short.length, units: short.reduce((a, l) => a + l.order, 0), ocost: short.reduce((a, l) => a + l.ocost, 0),
+      alone: Math.min(...lines.map(l => l.alone))};
+  });
+  const combined = [...parts.values()].map(p => {
+    const order = Math.max(0, p.need - p.avail);
+    return {p, code: p.code, desc: p.desc, need: p.need, take: p.need - order, order, ocost: order * p.cost, st: kitStatus(p.found, order, p.avail)};
+  });
+  return {kits, combined, binQty, wh, basis};
+}
+
+function renderKitList() {
+  if (!KITS.length) { $("kitlist").innerHTML = ""; return; }
+  $("kitlist").innerHTML = `<div class="kl">
+    <div class="klhead"><span><b>${KITS.length} kit${KITS.length === 1 ? "" : "s"} loaded</b> · stock is shared in list order — the top kit gets first pick. Use ↑ ↓ to change priority.</span>
+      <button class="btn sm link" id="kitclear">Remove all</button></div>
+    <div class="tbl" style="max-height:none"><table>
+      <thead><tr><th>Priority</th><th>Kit</th><th>Source</th><th class="num">Parts</th><th class="num">Qty of kits</th><th>Status</th><th></th></tr></thead>
+      <tbody>${KITS.map((k, i) => `<tr data-kid="${k.id}">
+        <td class="zero">${i + 1}</td>
+        <td title="${esc(k.name)}"><button class="lnk" data-kview="${k.id}">${esc(k.name)}</button></td>
+        <td title="${esc(k.source)}" class="zero">${esc(k.source)}</td>
+        ${numCell(k.lines.length, nf0.format)}
+        <td class="num"><input type="number" min="0" step="1" value="${k.n}" data-kn="${k.id}" aria-label="Quantity of ${esc(k.name)}"></td>
+        <td id="kst-${k.id}"></td>
+        <td class="acts"><button data-kup="${k.id}" title="Higher priority" ${i === 0 ? "disabled" : ""}>↑</button> <button data-kdown="${k.id}" title="Lower priority" ${i === KITS.length - 1 ? "disabled" : ""}>↓</button> <button data-kdel="${k.id}" title="Remove kit">✕</button></td>
+      </tr>`).join("")}</tbody></table></div></div>`;
+}
+
+function renderKitReportSelect() {
+  const sel = $("kitrep"), want = sel.dataset.want || sel.value;
+  delete sel.dataset.want;
+  sel.innerHTML = (KITS.length > 1 ? `<option value="all">All kits combined (${KITS.length})</option>` : "") +
+    KITS.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join("");
+  sel.value = [...sel.options].some(o => o.value === want) ? want : (sel.options[0]?.value || "");
+}
+
+function renderKit() {
+  renderKitList(); renderKitReportSelect(); renderKitReport();
+}
+
+function locChips(p, binQty) {
+  return `<div class="locs">${p.bins.length ? p.bins.slice(0, 4).map(r => `<span class="loc"><b>${esc(r.wh)}</b> · ${esc(r.bin || "No bin")} · ${nf.format(binQty(r))}</span>`).join("") +
+    (p.bins.length > 4 ? `<span class="loc more" data-kitem="${esc(p.code)}">+${p.bins.length - 4} more</span>` : "") : `<span class="zero">—</span>`}</div>`;
+}
+const codeCell = l => `<td title="${esc(l.viaAlt ? `${l.orig} not in inventory — using Alt Retiina PN ${l.code}` : l.code)}">${l.p.found ? `<button class="lnk" data-kitem="${esc(l.code)}">${esc(l.code)}</button>` : esc(l.code)}${l.viaAlt ? `<span class="whn">alt for ${esc(l.orig)}</span>` : ""}</td>`;
+const pill = st => `<td><span class="pill ${KSTATUS[st][1]}">${KSTATUS[st][0]}</span></td>`;
+const orderCell = v => `<td class="num${v > 0 ? " short" : " zero"}">${nf.format(v)}</td>`;
+
+function renderKitReport() {
+  if (!KITS.length) {
+    $("kitout").innerHTML = `<div class="empty">Upload or paste one or more kit lists to see available quantities, bin locations and what needs to be ordered.</div>`;
+    KIT_CALC = null; KIT_ROWS = []; return;
+  }
+  const C = KIT_CALC = computeKits();
+  for (const r of C.kits) {
+    const cell = $("kst-" + r.k.id); if (!cell) continue;
+    cell.innerHTML = r.n === 0 ? `<span class="pill out">Qty 0 — skipped</span>` : r.short ? `<span class="pill short">${r.short} line${r.short === 1 ? "" : "s"} short</span>` : `<span class="pill in">Complete</span>`;
+  }
+  const show = $("kitshow").value, filt = l => !show || (show === "short" ? l.order > 0 : l.order === 0);
+  const whTxt = C.wh ? `warehouse ${whLabel(C.wh)}` : "all warehouses";
+  const kv = (v, l, cls = "") => `<div><b class="${cls}">${v}</b><small>${l}</small></div>`;
+  const view = $("kitrep").value;
+  const hint = `<span class="src">Bin chips show warehouse · bin · qty available. Click an item code or “+ more” for every location.</span>`;
+
+  if (view === "all") {
+    const lines = C.combined, short = lines.filter(l => l.order > 0);
+    const units = short.reduce((a, l) => a + l.order, 0), cost = short.reduce((a, l) => a + l.ocost, 0);
+    const active = C.kits.filter(r => r.n > 0), complete = active.filter(r => !r.short).length;
+    const totalKits = active.reduce((a, r) => a + r.n, 0);
+    const vis = KIT_ROWS = lines.filter(filt).sort((a, b) => b.order - a.order || a.code.localeCompare(b.code, undefined, {numeric: true}));
+    $("kitout").innerHTML = `
+      <div class="kitsum">
+        ${kv(nf0.format(totalKits), `Kits to build (${active.length} kit list${active.length === 1 ? "" : "s"})`)}
+        ${kv(nf0.format(lines.length), "Distinct parts")}
+        ${kv(nf0.format(short.length), "Parts to order", short.length ? "bad" : "good")}
+        ${kv(nf.format(units), "Units to order", units ? "bad" : "good")}
+        ${kv(moneyShort(cost), "Est. order cost")}
+        ${kv(`${complete} of ${active.length}`, "Kit lists fully covered", complete === active.length ? "good" : "bad")}
+      </div>
+      <div class="kitbar"><span class="src"><b>All kits combined</b> · quantities summed across kits · stock from ${esc(whTxt)}</span>${hint}</div>
+      <div class="tbl"><table>
+        <thead><tr><th>Item code</th><th>Description</th><th>Used in (kit × qty)</th><th class="num">Required</th><th class="num">On hand</th><th class="num">Available</th><th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+        <tbody>${vis.length ? vis.map(l => `<tr>
+          ${codeCell(l)}
+          <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
+          <td class="locs-cell" title="${esc(l.p.kits.map(x => `${x.kit.name}: ${nf.format(x.need)}`).join("\n"))}"><div class="locs">${l.p.kits.map(x => `<span class="loc kitc">${esc(x.kit.name.split(" · ")[0])} · ${nf.format(x.need)}</span>`).join("")}</div></td>
+          ${numCell(l.need)}${numCell(l.p.qoh)}${numCell(l.p.avail)}
+          <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
+          ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+        : `<tr><td colspan="11" class="empty">No parts match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+      </table></div>`;
+    return;
+  }
+
+  const R = C.kits.find(r => String(r.k.id) === view) || C.kits[0], k = R.k, multi = KITS.length > 1;
+  const nf_ = R.lines.filter(l => !l.p.found).length;
+  const vis = KIT_ROWS = R.lines.filter(filt);
+  $("kitout").innerHTML = `
+    <div class="kitsum">
+      ${kv(nf0.format(R.lines.length), "Kit lines")}
+      ${kv(nf0.format(R.lines.length - R.short), "Fully covered", "good")}
+      ${kv(nf0.format(R.short), "Lines to order", R.short ? "bad" : "good")}
+      ${kv(nf.format(R.units), "Units to order", R.units ? "bad" : "good")}
+      ${kv(moneyShort(R.ocost), "Est. order cost")}
+      ${kv(R.alone === Infinity ? "—" : nf0.format(R.alone), `Buildable now if built alone (of ${nf0.format(R.n)})`, R.alone >= R.n ? "good" : "bad")}
+    </div>
+    <div class="kitbar"><span class="src">${k.title ? `<b>${esc(k.title)}</b> · ` : ""}${esc(k.source)} · parts from “${esc(k.itemCol)}”${k.qtyNames.length ? ` · qty/kit = ${esc(k.qtyNames.join(" + "))}` : ""} · ${nf0.format(R.n)} kit${R.n === 1 ? "" : "s"} · stock from ${esc(whTxt)}${multi ? ` · priority ${KITS.indexOf(k) + 1} of ${KITS.length}` : ""}${nf_ ? ` · ${nf_} part${nf_ === 1 ? "" : "s"} not found in inventory` : ""}${k.noQtyCol ? " · no quantity column found, so 1 per kit was assumed" : ""}</span>${hint}</div>
+    <div class="tbl"><table>
+      <thead><tr><th>#</th><th>Item code</th><th>Description</th><th class="num">Qty / kit</th><th class="num">Required</th><th class="num">Available</th>${multi ? `<th class="num" title="Stock left for this kit after higher-priority kits">From stock</th>` : ""}<th>Bin locations</th><th class="num">To order</th><th class="num" title="Open purchase orders (item warehouse detail)">On PO</th><th class="num">Est. cost</th><th>Status</th></tr></thead>
+      <tbody>${vis.length ? vis.map(l => `<tr>
+        <td class="zero">${l.n}</td>
+        ${codeCell(l)}
+        <td title="${esc(l.desc)}">${esc(l.desc || "—")}</td>
+        ${numCell(l.per)}${numCell(l.need)}${numCell(l.p.avail)}${multi ? numCell(l.take) : ""}
+        <td class="locs-cell">${locChips(l.p, C.binQty)}</td>
+        ${orderCell(l.order)}${numCell(l.p.po)}${numCell(l.ocost, money)}${pill(l.st)}</tr>`).join("")
+      : `<tr><td colspan="${multi ? 12 : 11}" class="empty">No kit lines match “${esc($("kitshow").selectedOptions[0].text)}”.</td></tr>`}</tbody>
+    </table></div>`;
+}
+
+function kitCsv() {
+  const C = KIT_CALC, bins = p => p.bins.map(r => `${r.wh}/${r.bin || "No bin"}/${C.binQty(r)}`).join("; ");
+  if ($("kitrep").value === "all") {
+    return [["Item code (Retiina PN)", "Description", "Used in (kit: qty)", "Required", "On hand", "Committed", "Available", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
+      ...KIT_ROWS.map(l => [l.code, l.desc, l.p.kits.map(x => `${x.kit.name}: ${x.need}`).join("; "), l.need, l.p.qoh, l.p.com, l.p.avail, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+  }
+  return [["Kit", "Kit qty", "#", "Item code (Retiina PN)", "Description", "Qty per kit", "Required", "On hand", "Committed", "Available", "From stock", "Bin locations (warehouse/bin/qty)", "To order", "On PO", "Unit cost", "Est. order cost", "Status"],
+    ...KIT_ROWS.map(l => [l.kit.name, l.kit.n, l.n, l.code, l.desc, l.per, l.need, l.p.qoh, l.p.com, l.p.avail, l.take, bins(l.p), l.order, l.p.po, l.p.cost, l.ocost.toFixed(2), KSTATUS[l.st][0]])];
+}
+
+/* ---------- part modal ---------- */
+// mode "loc" = one row per warehouse+bin, "wh" = one row per warehouse.
+// rows defaults to every record of the part; the By part tab passes only the rows matching the current filters.
+let MODAL = {item: null, mode: "loc", rows: null};
+function openItem(item, mode = "loc", subset = null) {
+  MODAL = {item, mode, rows: subset};
+  const rows = subset || BY_ITEM.get(item) || [];
+  const t = rows.reduce((a, r) => (a.qoh += r.qoh, a.com += r.com, a.avail += r.avail, a.value += r.value, a), {qoh: 0, com: 0, avail: 0, value: 0});
+  $("mt").textContent = item + (mode === "wh" ? " — warehouses" : " — bin locations");
+  $("md").textContent = (rows[0]?.desc || "") + (subset ? " · matching the current filters" : " · all warehouses");
+  const stocked = rows.filter(r => r.qoh > 0), dt = detSum(item, subset ? S.wh : "");
+  const q = mode === "wh" && DET.has(item) ? dt : t; // warehouses window = Sage warehouse detail numbers; bin window = bin report
+  $("ms").innerHTML = [[nf.format(q.qoh), "On hand"], [nf.format(q.com), "Committed"], [nf.format(q.avail), "Available"],
+    [nf.format(dt.po), "On PO"], [nf.format(dt.so), "On SO"], [new Set(stocked.map(r => r.wh)).size, "Warehouses with stock"]]
+    .map(([v, l]) => `<div><b>${v}</b><small>${l}</small></div>`).join("");
+  renderModal(); $("ov").classList.add("show");
+}
+function renderModal() {
+  const all = (MODAL.rows || BY_ITEM.get(MODAL.item) || []).slice().sort((a, b) => a.wh.localeCompare(b.wh, undefined, {numeric: true}) || b.qoh - a.qoh); // warehouse 000 first, biggest qty first within a warehouse
+  const rows = $("mzero").checked ? all : all.filter(r => r.qoh !== 0 || r.com !== 0);
+  if (MODAL.mode === "wh") {
+    // Laid out like the Sage Item Inquiry "Quantities" grid: one row per warehouse, numbers from the item warehouse detail.
+    // Warehouses come from the bin records plus any detail row (e.g. on PO with nothing in a bin yet); bins are listed last.
+    const gs = group(rows, r => r.wh, r => ({wh: r.wh, whn: r.whn}));
+    const det = DET.get(MODAL.item) || new Map(), have = new Set(gs.map(g => g.wh));
+    for (const [w] of det) if (!have.has(w) && (!MODAL.rows || !S.wh || w === S.wh)) gs.push({wh: w, whn: WH.get(w), rows: [], qoh: 0, com: 0, avail: 0});
+    gs.sort((a, b) => a.wh.localeCompare(b.wh, undefined, {numeric: true}));
+    const src = DET_META ? `${DET_META.source} · ${DET_META.asof}` : "no item warehouse detail loaded";
+    $("mhead").innerHTML = `<tr><th>Whse</th><th>Description</th>` +
+      DET_F.map(([, l]) => `<th class="num" title="${esc(src)}">${l}</th>`).join("") + `<th>Bin locations</th></tr>`;
+    $("mb").innerHTML = gs.length ? gs.map(g => { const d = det.get(g.wh) || detZero(); return `<tr><td><span class="wh">${esc(g.wh)}</span></td><td title="${esc(g.whn || "")}">${esc(g.whn || "—")}</td>${DET_F.map(([k]) => numCell(d[k])).join("")}<td title="${esc(g.rows.map(r => `${r.bin || "No bin"}: ${nf.format(r.qoh)}`).join("\n"))}">${g.rows.length ? g.rows.map(r => binCell(r.bin)).join(" ") : `<span class="zero">—</span>`}</td></tr>`; }).join("")
+      : `<tr><td colspan="${3 + DET_F.length}" class="empty">No stock on hand. Tick “Show zero-quantity bins” to see where it has been recorded.</td></tr>`;
+    $("mnote").textContent = `${gs.length} warehouse${gs.length === 1 ? "" : "s"} · ${rows.length} bin records`;
+  } else {
+    $("mhead").innerHTML = `<tr><th>Warehouse</th><th>Bin location</th><th class="num">On hand</th><th class="num">Committed</th><th class="num">Available</th><th class="num">Unit cost</th></tr>`;
+    $("mb").innerHTML = rows.length ? rows.map(r => `<tr><td>${whCell(r.wh, r.whn)}</td><td>${binCell(r.bin)}</td>${numCell(r.qoh)}${numCell(r.com)}${numCell(r.avail)}${numCell(r.cost, money)}</tr>`).join("")
+      : `<tr><td colspan="6" class="empty">No stock on hand. Tick “Show zero-quantity bins” to see where it has been recorded.</td></tr>`;
+    $("mnote").textContent = `${rows.length} of ${all.length} bin records`;
+  }
+}
+
+/* ---------- events ---------- */
+const FIELDS = ["wh", "bin", "item", "pstatus", "status", "minqty", "maxqty", "nobin", "multi"];
+function readForm() { S.q = $("q").value.trim(); for (const f of FIELDS) S[f] = $(f).value; S.shown = PAGE; }
+function writeForm() { $("q").value = S.q; for (const f of FIELDS) $(f).value = S[f]; }
+function apply() { readForm(); render(); }
+
+$("go").onclick = apply;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") apply(); });
+let deb; $("q").addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(apply, 250); });
+for (const f of FIELDS) $(f).addEventListener(f === "bin" || f === "item" || f.startsWith("m") && f !== "multi" ? "input" : "change", () => {
+  if (f === "wh") { S.wh = $("wh").value; buildBinList(); }
+  clearTimeout(deb); deb = setTimeout(apply, 200);
+});
+$("clear").onclick = () => { Object.assign(S, DEFAULTS); writeForm(); buildBinList(); apply(); };
+$("ftoggle").onclick = () => { const h = $("filters").classList.toggle("hidden"); $("advtoggle").style.display = h ? "none" : ""; if (h) $("adv").classList.add("hidden"); $("ftoggle").textContent = h ? "Filters ⌄" : "Filters ⌃"; };
+$("advtoggle").onclick = () => { $("advtoggle").classList.toggle("open", $("adv").classList.toggle("hidden") === false); };
+document.querySelectorAll("[data-qv]").forEach(b => b.onclick = () => {
+  for (const [k, v] of Object.entries(QV[b.dataset.qv])) $(k).value = v;
+  apply();
+});
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.shown = PAGE; render(); });
+document.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { S.tab = b.dataset.goto; S.shown = PAGE; render(); });
+$("thead").onclick = e => {
+  const th = e.target.closest("th"); if (!th) return;
+  const cur = S.sort[S.tab] || TABS[S.tab].def, num = th.classList.contains("num");
+  S.sort[S.tab] = {key: th.dataset.sort, dir: cur.key === th.dataset.sort ? -cur.dir : (num ? -1 : 1)}; render();
+};
+$("tbody").onclick = e => {
+  const l = e.target.closest("[data-item]"); if (l) return openItem(l.dataset.item);
+  const p = e.target.closest("[data-pwh],[data-ploc]");
+  if (p) {
+    const item = p.dataset.pwh ?? p.dataset.ploc, g = CURRENT.find(x => x.item === item);
+    return openItem(item, p.dataset.pwh != null ? "wh" : "loc", g ? g.rows : null);
+  }
+  const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+  const g = CURRENT[+tr.dataset.i];
+  if (TABS[S.tab].click === "wh") { S.wh = g.wh; $("wh").value = g.wh; buildBinList(); S.tab = "part"; }
+  apply(); window.scrollTo({top: 0, behavior: "smooth"});
+};
+$("more").onclick = e => { if (e.target.closest("#showmore")) { S.shown += PAGE * 5; render(); } };
+$("mx").onclick = () => $("ov").classList.remove("show");
+$("ov").onclick = e => { if (e.target === $("ov")) $("ov").classList.remove("show"); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("ov").classList.remove("show"); });
+$("mzero").onchange = renderModal;
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200); }
+
+$("saveview").onclick = () => {
+  try { localStorage.setItem("invTrackerView", JSON.stringify({...S, shown: PAGE})); toast("View saved — it will open this way next time."); }
+  catch { toast("Could not save the view in this browser."); }
+};
+
+function downloadCsv(rows, filename) {
+  const q = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + rows.map(r => r.map(q).join(",")).join("\r\n")], {type: "text/csv"}));
+  a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* kit events */
+$("kitfile").onchange = async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  if (files.length) await addKitFiles(files);
+};
+const drop = $("kitdrop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { const files = [...e.dataTransfer.files]; if (files.length) addKitFiles(files); });
+let PASTE_N = 0;
+$("kitgo").onclick = () => {
+  const t = $("kitpaste").value; if (!t.trim()) return toast("Paste item codes and quantities first.");
+  try { addKits([rowsToKit(parseDelimited(t), `Pasted list ${++PASTE_N}`)]); $("kitpaste").value = ""; } catch (err) { toast(err.message); }
+};
+$("kitlist").addEventListener("input", e => {
+  const inp = e.target.closest("[data-kn]"); if (!inp) return;
+  const k = KITS.find(x => x.id === +inp.dataset.kn); if (k) { k.n = Math.max(0, +inp.value || 0); renderKitReport(); }
+});
+$("kitlist").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "kitclear") { KITS = []; return renderKit(); }
+  if (b.dataset.kview) { $("kitrep").value = b.dataset.kview; return renderKitReport(); }
+  const id = +(b.dataset.kup || b.dataset.kdown || b.dataset.kdel), i = KITS.findIndex(k => k.id === id);
+  if (i < 0) return;
+  if (b.dataset.kdel) KITS.splice(i, 1);
+  else { const j = b.dataset.kup ? i - 1 : i + 1; if (j < 0 || j >= KITS.length) return; [KITS[i], KITS[j]] = [KITS[j], KITS[i]]; }
+  renderKit();
+});
+$("kittpl").onclick = () => downloadCsv([["System Qty", "Attrition Qty", "Spares Qty", "Retiina PN", "Mfg PN", "Description", "Alt Retiina PN"], [2, "", "", "E-00042", "2900364", "OPTOCOUPLER PLC-OSC- 24DC/ 24D", ""], [1, "", 1, "R-000995", "3022276", "END CLAMP", ""]], "kit_template.csv");
+["kitrep", "kitwh", "kitshow", "kitbasis"].forEach(id => $(id).addEventListener("change", renderKitReport));
+$("kitout").onclick = e => {
+  const b = e.target.closest("[data-kitem]"); if (!b) return;
+  const l = KIT_ROWS.find(x => x.code === b.dataset.kitem);
+  openItem(b.dataset.kitem, "loc", $("kitwh").value && l ? l.p.rows : null);
+};
+$("kitprint").onclick = () => window.print();
+
+$("csv").onclick = () => {
+  if (S.tab === "kit") {
+    if (!KITS.length) return toast("Load a kit first.");
+    const v = $("kitrep").value, k = KITS.find(x => String(x.id) === v);
+    const label = v === "all" ? `${KITS.length}_kits_combined` : `${(k.name.split(" · ")[0]).replace(/[^\w-]+/g, "_")}_x${k.n}`;
+    downloadCsv(kitCsv(), `kit_check_${label}_${new Date().toISOString().slice(0, 10)}.csv`);
+    return toast(`Exported ${KIT_ROWS.length} lines.`);
+  }
+  const T = TABS[S.tab];
+  const plain = {
+    part: [["Item code", g => g.item], ["Description", g => g.desc], ["Whse", g => g.wh], ["Warehouse", g => g.whn], ...DET_F.map(([k, l]) => [l, g => g.det[k]]), ["Bin location", g => g.bins.map(r => r.bin).join("; ") || "No bin"], ["Status", g => PSTATUS[g.st][0]]],
+    wh: [["Warehouse", g => g.wh], ["Name", g => g.whn], ["Bins", g => g.nbin], ["Parts", g => g.nitem], ["Bin records", g => g.rows.length], ["On hand", g => g.qoh], ["Committed", g => g.com]],
+  }[S.tab];
+  const q = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const csv = [plain.map(c => q(c[0])).join(","), ...CURRENT.map(d => plain.map(c => q(c[1](d))).join(","))].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], {type: "text/csv"}));
+  a.download = `inventory_${S.tab}${S.wh ? "_WH" + S.wh : ""}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`Exported ${nf0.format(CURRENT.length)} ${T.noun}.`);
+};
+
+/* ---------- load a new Excel export in the browser ---------- */
+$("file").onchange = async e => {
+  const file = e.target.files[0]; if (!file) return;
+  toast("Reading " + file.name + "…");
+  try {
+    if (!window.XLSX) await new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = ok; s.onerror = () => no(new Error("Could not load the Excel reader (needs internet).")); document.head.appendChild(s); });
+    const wb = XLSX.read(await file.arrayBuffer(), {type: "array"});
+    const name = wb.SheetNames.find(n => /qty|bin/i.test(n)) || wb.SheetNames[0];
+    const json = XLSX.utils.sheet_to_json(wb.Sheets[name], {defval: ""});
+    if (!json.length || !("ItemCode" in json[0]) || !("WarehouseCode" in json[0])) throw new Error("Sheet needs WarehouseCode, BinLocation, ItemCode… columns.");
+    const raw = {source: file.name, asof: new Date(file.lastModified).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric"}), wh: [], bins: [], items: [], rows: []};
+    const wi = new Map(), bi = new Map(), ii = new Map();
+    const idx = (m, arr, k, v) => { if (!m.has(k)) { m.set(k, arr.length); arr.push(v); } return m.get(k); };
+    for (const r of json) {
+      const wc = String(r.WarehouseCode).trim().padStart(3, "0"), ic = String(r.ItemCode).trim();
+      if (!ic) continue;
+      const w = idx(wi, raw.wh, wc, [wc, String(r.WarehouseName || "").trim()]);
+      if (!raw.wh[w][1] && r.WarehouseName) raw.wh[w][1] = String(r.WarehouseName).trim();
+      raw.rows.push([w, idx(bi, raw.bins, String(r.BinLocation ?? "").trim(), String(r.BinLocation ?? "").trim()),
+        idx(ii, raw.items, ic, [ic, String(r.ItemCodeDesc || "").trim()]), +r.QuantityOnHand || 0, +r.QuantityCommitted || 0, +r.Available || 0, +r.LastTotalUnitCost || 0]);
+    }
+    load(raw); apply(); toast(`Loaded ${nf0.format(raw.rows.length)} bin records from ${file.name}.`);
+  } catch (err) { toast(err.message); }
+};
+
+/* ---------- init ---------- */
+if (RAW) load(RAW); else $("meta").textContent = "No data embedded — load a Sage export under Advanced filters.";
+try { const v = JSON.parse(localStorage.getItem("invTrackerView") || "null"); if (v) Object.assign(S, v, {sort: v.sort || {}}); } catch {}
+if (S.wh && !WH.has(S.wh)) S.wh = "";
+if (!TABS[S.tab]) S.tab = "part"; // a saved view may point at a tab that no longer exists
+writeForm(); buildBinList(); render();
+</script>
+</body>
+</html>
